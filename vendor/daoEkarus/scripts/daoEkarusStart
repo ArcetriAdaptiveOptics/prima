@@ -1,0 +1,210 @@
+#!/bin/bash
+# Second-stage camera selection:
+#   (no flag)  start both the C-BLUE and the ORCA controllers   [default]
+#   -c         C-BLUE only
+#   -o         ORCA only
+#   -n         night time: also start the telescope control (telescopeCtrl.py),
+#              the offload calc + auto offload loop (computeTelescopeOffload.py,
+#              telescopeOffload.py) and the telescope control GUI
+#              (telescopeCtrlDisp.py)
+CAMERA="both"
+NIGHT="no"
+while getopts "con" opt; do
+    case $opt in
+        c) CAMERA="cblue" ;;
+        o) CAMERA="orca" ;;
+        n) NIGHT="yes" ;;
+        *) echo "usage: daoEkarusStart [-c | -o] [-n]" >&2; exit 1 ;;
+    esac
+done
+
+# PIDs of the GUIs started below, so Ctrl-C during startup tears them down too
+# instead of leaving them half-started. Once startup is complete the trap is
+# cleared and the GUIs are disowned so this script can return to the shell.
+GUI_PIDS=()
+cleanup_guis() {
+    echo
+    echo "Caught interrupt - closing Ekarus GUIs..."
+    for pid in "${GUI_PIDS[@]}"; do
+        kill "$pid" 2>/dev/null
+    done
+    if [ "$NIGHT" = "yes" ]; then
+        tmux kill-session -t TELESCOPE_CTRL 2>/dev/null
+        tmux kill-session -t TELESCOPE_OFFLOAD_CALC 2>/dev/null
+        tmux kill-session -t TELESCOPE_OFFLOAD_LOOP 2>/dev/null
+    fi
+    exit 0
+}
+trap cleanup_guis INT TERM
+
+# Keep the popup window raised above the Ekarus GUIs for a few seconds after
+# it maps (the Qt GUIs are still initialising and may raise themselves on top
+# of it otherwise). Best effort - needs wmctrl or xdotool; harmless without.
+raise_popup_window() {
+    local title="$1"
+    ( for _ in $(seq 1 25); do
+          if command -v wmctrl >/dev/null 2>&1; then
+              wmctrl -F -a "$title" 2>/dev/null
+              wmctrl -F -r "$title" -b add,above 2>/dev/null
+          elif command -v xdotool >/dev/null 2>&1; then
+              local wid
+              wid=$(xdotool search --name "^${title}$" 2>/dev/null | head -n1)
+              [ -n "$wid" ] && { xdotool windowraise "$wid" 2>/dev/null; xdotool windowactivate "$wid" 2>/dev/null; }
+          fi
+          sleep 0.4
+      done ) >/dev/null 2>&1 &
+}
+
+# "startup done" popup + the day/night-mode warning
+show_startup_popup() {
+    local title="Ekarus started"
+    local msg
+    if [ "$NIGHT" = "yes" ]; then
+        msg="Ekarus startup complete  -  NIGHT-TIME mode (-n).
+
+Telescope control (telescopeCtrl.py), the offload calc + auto offload loop
+and the control GUI are running and connected to the TCS.
+
+WARNING: if this is a DAYTIME / bench session there is no telescope to
+talk to.  Stop Ekarus and restart WITHOUT -n:
+
+    daoEkarusStop
+    daoEkarusStart"
+    else
+        msg="Ekarus startup complete  -  DAYTIME mode.
+
+No telescope control was started - there is NO TCS / telescope connection.
+
+WARNING: if you are running Ekarus for NIGHT-TIME observing, stop and
+restart with -n:
+
+    daoEkarusStop
+    daoEkarusStart -n"
+    fi
+
+    printf '\n============================================================\n%s\n============================================================\n\n' "$msg"
+
+    # let the GUI windows finish mapping so the popup comes up last / on top
+    sleep 1
+
+    if command -v zenity >/dev/null 2>&1; then
+        GDK_BACKEND=x11 zenity --warning --no-wrap --title="$title" --text="$msg" >/dev/null 2>&1 &
+    elif command -v xmessage >/dev/null 2>&1; then
+        xmessage -center -title "$title" \
+                 -xrm 'xmessage*iconic:false' -xrm 'xmessage*overrideRedirect:false' \
+                 "$msg" >/dev/null 2>&1 &
+    fi
+    local popup_pid=$!
+    disown "$popup_pid" 2>/dev/null
+
+    raise_popup_window "$title"
+}
+
+daoEkarusLaunchMessage
+
+daoEkarusCleanup
+
+daoEkarusCreateShm.py
+sleep 2
+
+echo "Starting Ekarus"
+datestr="$( date -u )"
+echo "$datestr" 
+
+# launch the DAQ and daoServer in their own tmux session.
+tmuxname="DAQ"
+cmd="daoDAQ -vvv"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+sleep 0.1
+echo "Executing $cmd in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $1 process."
+
+tmuxname="DAO_SERVER"
+cmd="daoServer.py --role master"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+sleep 0.1
+echo "Executing $cmd in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $1 process."
+
+sleep 0.5
+daoEkarusStartDM468
+
+sleep 0.5
+daoEkarusStartOcamCamera
+
+if [ "$CAMERA" = "both" ] || [ "$CAMERA" = "cblue" ]; then
+    sleep 0.5
+    daoEkarusStartCBLUECamera
+fi
+
+if [ "$CAMERA" = "both" ] || [ "$CAMERA" = "orca" ]; then
+    sleep 0.5
+    daoEkarusStartOrcaCamera
+fi
+
+sleep 0.5
+daoEkarusStartFastTT
+
+sleep 0.5
+daoEkarusStartModulator
+
+sleep 0.5
+daoEkarusStartPyramidPipeline
+
+if [ "$NIGHT" = "yes" ]; then
+    sleep 0.5
+    tmuxname="TELESCOPE_CTRL"
+    # telescopeCtrl.py imports ekarus_tcs -> must run in the "ekarus" conda env
+    cmd="conda run -n ekarus --no-capture-output telescopeCtrl.py"
+    daoTmux $tmuxname "$cmd"
+
+    sleep 0.5
+    tmuxname="TELESCOPE_OFFLOAD_CALC"
+    cmd="computeTelescopeOffload.py"
+    daoTmux $tmuxname "$cmd"
+
+    sleep 0.5
+    tmuxname="TELESCOPE_OFFLOAD_LOOP"
+    cmd="telescopeOffload.py"
+    daoTmux $tmuxname "$cmd"
+fi
+
+sleep 0.5
+EkarusCtrl.py &
+GUI_PIDS+=($!)
+
+if [ "$NIGHT" = "yes" ]; then
+    sleep 0.5
+    telescopeCtrlDisp.py &
+    GUI_PIDS+=($!)
+fi
+
+if [ "$CAMERA" = "both" ] || [ "$CAMERA" = "cblue" ]; then
+    sleep 0.5
+    cblueCtrl.py -s /tmp/cblue.im.shm &
+    GUI_PIDS+=($!)
+fi
+
+if [ "$CAMERA" = "both" ] || [ "$CAMERA" = "orca" ]; then
+    sleep 0.5
+    orcaCtrl.py -s /tmp/orca.im.shm &
+    GUI_PIDS+=($!)
+fi
+
+show_startup_popup
+
+# Startup is done: stop treating Ctrl-C as "tear everything down", hand the
+# GUIs off so they keep running on their own, and let this script exit instead
+# of blocking on `wait` until every GUI window is closed.
+trap - INT TERM
+for pid in "${GUI_PIDS[@]}"; do
+    disown "$pid" 2>/dev/null
+done
+
+echo "Ekarus started. GUIs and tmux sessions are running in the background."
+exit 0
+

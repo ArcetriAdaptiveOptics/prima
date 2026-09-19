@@ -1,0 +1,96 @@
+#!/bin/bash
+daoEkarusLaunchMessage
+echo "Starting Ekarus FastTT process..."
+datestr="$( date -u )"
+echo "$datestr" 
+
+
+SHM_PUPIL_FLUX="/tmp/pupil_flux.im.shm"
+SHM_FAST_TT_RECON="/tmp/pupil_2_fastTT_rec.im.shm"
+FASTTT_RESIDUAL="/tmp/fasttt_residual.im.shm"
+
+SHM_DM1_CMD="/tmp/dm1Cmd01.im.shm"
+SHM_DM_2_TT_RECON="/tmp/dm1_2_fastTT_rec.im.shm"
+SHM_FASTTT_RESIDUAL_TT_OFFLOAD="/tmp/fasttt_residual_OL.im.shm"
+
+FASTTT_OFFSET="/tmp/fasttt_offset.im.shm"
+SHM_FASTTT="/tmp/fasttt.im.shm"
+SHM_FASTTT_00="/tmp/fasttt00.im.shm"
+SHM_FASTTT_01="/tmp/fasttt01.im.shm"
+
+FASTTT_LOOP_CMD="/tmp/fast_tt_lpCmd.im.shm"
+FASTTT_LOOP_GAIN="/tmp/fast_tt_lpLeak.im.shm"
+FASTTT_LOOP_LEAK="/tmp/fast_tt_lpGain.im.shm"
+
+
+# START combiner
+tmuxname="FASTTT_CONTROL"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+cmd="taskset -c 43-47 daoHwPiTtCtrl.py $SHM_FASTTT 192.168.68.48 E-518"
+sleep 0.5
+echo "Executing $cmd in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $1 process."
+
+sleep 2
+# START combiner
+tmuxname="PUPIL_FLUX_MEASUREMENT"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+cmd="taskset -c 43-47 Pupil_flux_measurement.py"
+sleep 0.5
+echo "Executing $cmd in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $1 process."
+
+# START Slopes to Mode projection
+tmuxname="FASTTT_MVM"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+cmd="taskset -c 40 daoMvM -S $SHM_PUPIL_FLUX $SHM_FAST_TT_RECON $FASTTT_RESIDUAL -L"
+sleep 0.5
+echo "Executing $cmd in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $1 process."
+
+# START Slopes to Mode projection
+tmuxname="FASTT_DM_OFFLOAD_MVM"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+cmd="taskset -c 40 daoMvM -S $SHM_DM1_CMD $SHM_DM_2_TT_RECON $SHM_FASTTT_RESIDUAL_TT_OFFLOAD -s 4 -L"
+sleep 0.5
+echo "Executing $cmd in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $1 process."
+
+# START combiner
+tmuxname="FASTTT_COMBINER"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+cmd="taskset -c 43-47 daoShmCombiner -S $SHM_FASTTT 3 -L"
+sleep 0.5
+echo "Executing $cmd in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $1 process."
+
+# START Modes to Commands projection
+tmuxname="FASTTT_LEAKY_INTEGRATOR"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+cmd="taskset -c 40 Fast_TT_Loop.py"
+sleep 0.5
+echo "Executing $cmd in tmux session $tmuxname"
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $1 process."
+
+# START TT command averaging: rolling mean of the fast TT commands (ttCmds),
+# daoAvgShm publishes it to /tmp/fastttAvg.im.shm.  -n = window (frames),
+# -s = semaphore number on $SHM_FASTTT to wait on.
+tmuxname="FASTTT_AVG"
+cmd="taskset -c 41 daoAvgShm -S $SHM_FASTTT -n 100 -s 5 -L"
+daoTmux $tmuxname "$cmd"
+
+moveFastTT.py 0 0
+
+# relaxFastTT.py

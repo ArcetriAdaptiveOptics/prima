@@ -1,0 +1,168 @@
+syntax = "proto3";
+
+package control;
+
+import "google/protobuf/timestamp.proto";
+
+// ─────────────────────────────────────────────
+//  Enums
+// ─────────────────────────────────────────────
+
+enum LaunchMode {
+  LAUNCH_MODE_UNSPECIFIED = 0;
+  LAUNCH_MODE_NORMAL      = 1;
+  LAUNCH_MODE_SAFE        = 2;
+  LAUNCH_MODE_DEBUG       = 3;
+}
+
+enum TelemAction {
+  TELEM_ACTION_UNSPECIFIED = 0;
+  TELEM_ACTION_START       = 1;
+  TELEM_ACTION_STOP        = 2;
+}
+
+enum CommandAction {
+  COMMAND_ACTION_UNSPECIFIED = 0;
+  COMMAND_ACTION_CLOSE       = 1;
+  COMMAND_ACTION_OPEN        = 2;
+}
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_SUCCESS     = 1;
+  STATUS_ERROR       = 2;
+  STATUS_NOT_FOUND   = 3;
+  STATUS_INVALID     = 4;
+}
+
+// ─────────────────────────────────────────────
+//  Value types (scalars, vectors, matrices)
+// ─────────────────────────────────────────────
+
+message DoubleVector {
+  repeated double values = 1;
+}
+
+message Int64Vector {
+  repeated int64 values = 1;
+}
+
+message StringVector {
+  repeated string values = 1;
+}
+
+message DoubleMatrix {
+  uint32 rows = 1;
+  uint32 cols = 2;
+  repeated double data = 3 [packed=true];  // Row-major order
+}
+
+message Int64Matrix {
+  uint32 rows = 1;
+  uint32 cols = 2;
+  repeated int64 data = 3 [packed=true];   // Row-major order
+}
+
+// Flexible value container supporting scalars, vectors, and matrices
+message Value {
+  oneof data {
+    double       scalar_double = 1;
+    int64        scalar_int    = 2;
+    string       scalar_string = 3;
+    bool         scalar_bool   = 4;
+    
+    DoubleVector vector_double = 10;
+    Int64Vector  vector_int    = 11;
+    StringVector vector_string = 12;
+    
+    DoubleMatrix matrix_double = 20;
+    Int64Matrix  matrix_int    = 21;
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Command messages
+// ─────────────────────────────────────────────
+
+// Control loop operations
+message Loop {
+  string name           = 1;  // Loop name
+  CommandAction command = 2;  // Open or close command
+}
+
+// Launch a process
+message Launch {
+  string process_name   = 1;  // Process identifier
+  LaunchMode mode       = 2;  // Launch mode
+  repeated string args  = 3;  // Optional command-line arguments
+  map<string, string> env = 4;  // Optional environment variables
+}
+
+// Set a parameter to a value (scalar, vector, or matrix)
+message Set {
+  string param = 1;
+  Value value  = 2;
+}
+
+// Request the current value of a parameter
+message Get {
+  string param = 1;
+}
+
+// Control telemetry streaming
+message Telem {
+  TelemAction action = 1;
+  repeated string channels = 2;  // Specific channels (empty = all)
+  uint32 rate_hz = 3;            // Sample rate in Hz (0 = maximum)
+}
+
+// Kill a process
+message Kill {
+  string target = 1;  // Target: "all", process name, or PID
+  bool force    = 2;  // true = SIGKILL, false = SIGTERM
+}
+
+// ─────────────────────────────────────────────
+//  Request/Response envelope (request-reply pattern)
+// ─────────────────────────────────────────────
+
+message Request {
+  uint32 request_id = 1;  // Unique ID for tracking request-reply pairs
+  google.protobuf.Timestamp timestamp = 2;  // Request timestamp
+  
+  oneof command {
+    Loop   loop   = 10;
+    Launch launch = 11;
+    Set    set    = 12;
+    Get    get    = 13;
+    Telem  telem  = 14;
+    Kill   kill   = 15;
+  }
+}
+
+message Response {
+  uint32 request_id = 1;  // Matches the request ID
+  google.protobuf.Timestamp timestamp = 2;  // Response timestamp
+  Status status = 3;      // Operation status
+  string message = 4;     // Human-readable status/error message
+  
+  oneof result {
+    Value value       = 10;  // For Get command responses
+    string process_id = 11;  // For Launch command responses
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Legacy Message (for backward compatibility)
+// ─────────────────────────────────────────────
+
+message Message {
+  oneof payload {
+    Loop   loop   = 1;
+    Launch launch = 2;
+    Set    set    = 3;
+    Get    get    = 4;
+    Telem  telem  = 5;
+    Kill   kill   = 6;
+  }
+}

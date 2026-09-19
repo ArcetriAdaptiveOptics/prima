@@ -1,0 +1,166 @@
+import os
+import platform
+
+daoroot = os.getenv('DAOROOT', '')
+vcpkg = os.getenv('VCPKG_PREFIX', r'C:/Users/labot/DAO/vcpkg/installed/x64-windows')
+wincompat = os.getenv('DAO_WINCOMPAT', r'C:/Users/labot/DAO/wincompat')
+is_win = platform.system() == "Windows"
+is_darwin = platform.system() == "Darwin"
+
+if is_darwin:
+	my_ld_flags = ['']
+	my_cxx_flags = ['-std=c++14']
+	my_cflags = ['-O3', '-ffast-math']
+	my_link_flags = ['-Lsrc', '-L' + daoroot + '/lib/']
+	if os.path.exists('/opt/homebrew/lib'):
+		my_link_flags.append('-L/opt/homebrew/lib')
+	if os.path.exists('/usr/local/lib'):
+		my_link_flags.append('-L/usr/local/lib')
+elif is_win:
+	my_ld_flags = ['advapi32.lib']
+	my_cxx_flags = ['/std:c++17', '/EHsc', '/D_CRT_SECURE_NO_WARNINGS', '/D_CRT_NONSTDC_NO_DEPRECATE']
+	my_cflags = ['/O2', '/W3', '/D_CRT_SECURE_NO_WARNINGS', '/D_CRT_NONSTDC_NO_DEPRECATE', '/D_USE_MATH_DEFINES']
+	my_link_flags = [
+		'/LIBPATH:src',
+		'/LIBPATH:' + daoroot + '/lib',
+		'/LIBPATH:' + vcpkg + '/lib',
+	]
+else:
+	my_ld_flags = ['-lrt']
+	my_cxx_flags = ['']
+	my_cflags = ['-Ofast', '-march=native', '-funroll-loops']
+	my_link_flags = ['-Lsrc', '-L' + daoroot + '/lib/', '-L' + daoroot + '/lib64/']
+
+includes = '../include ' + daoroot + '/include/'
+if is_win:
+	includes += ' ' + wincompat + ' ' + vcpkg + '/include'
+
+def dao_c_prog(name, source=None, ncurses=False, extra_ld=None, extra_cflags=None):
+	"""Register a C tool program with platform-appropriate flags."""
+	if is_win and ncurses:
+		print('Skipping %s (ncurses not available on Windows build).' % name)
+		return
+	src = source or (name + '.c')
+	cflags = list(my_cflags)
+	if extra_cflags:
+		cflags += extra_cflags
+	elif not is_win:
+		cflags += ['-Wall', '-Wextra', '-pipe', '-fdiagnostics-color=auto']
+
+	kw = dict(
+		source=src,
+		target=name,
+		includes=includes,
+		linkflags=my_link_flags,
+		use='daoTools',
+	)
+	if is_win:
+		kw['cflags'] = cflags
+		libs = ['dao', 'pthreadVC3']
+		kw['lib'] = libs
+		kw['ldflags'] = list(my_ld_flags)
+	else:
+		kw['cflags'] = cflags
+		ld = ['-ldao', '-lpthread', '-lm'] + list(my_ld_flags)
+		if ncurses:
+			ld.append('-lncurses')
+		if extra_ld:
+			ld += extra_ld
+		kw['ldflags'] = ld
+	bld.program(**kw)
+
+
+dao_c_prog('daoRandWriterSync')
+dao_c_prog('daoRandImageU16Write')
+dao_c_prog('daoClock')
+dao_c_prog('daoTimeDiff')
+dao_c_prog('daoTimeDiffNCurse', ncurses=True)
+dao_c_prog('daoReadWrite')
+# 2D VLAs not converted for MSVC yet
+if is_win:
+	print('Skipping daoTimeDiffStat (2D VLA unsupported on MSVC).')
+else:
+	dao_c_prog('daoTimeDiffStat')
+dao_c_prog('daoCommandFilter')
+dao_c_prog('daoLeakyIntegrator')
+dao_c_prog('daoLeakyIntegratorMap')
+dao_c_prog('daoShmMonitoring', ncurses=True)
+dao_c_prog('daoShmMonitoring1Value', ncurses=True)
+dao_c_prog('daoPixelCalibrate')
+dao_c_prog('daoPixelCalibratePws')
+dao_c_prog('daoCalIntensity')
+dao_c_prog('daoCalIntensityNorm', extra_cflags=([] if is_win else ['-march=native', '-funroll-loops', '-Wall', '-Wextra', '-Werror', '-pipe', '-fdiagnostics-color=auto']))
+dao_c_prog('daoShmCombiner', ncurses=True)
+dao_c_prog('daoShm2Fits')
+dao_c_prog('daoComputeCentroid')
+dao_c_prog('daoComputeCentroidRelative')
+dao_c_prog('daoComputeCentroidRelativeRef')
+dao_c_prog('daoComputeCentroidPws')
+dao_c_prog('daoComputeCentroidCorrelation')
+if is_win:
+	print('Skipping daoAvgShm/daoAvgDoubleShm (2D VLA unsupported on MSVC).')
+else:
+	dao_c_prog('daoAvgShm')
+	dao_c_prog('daoAvgDoubleShm')
+dao_c_prog('daoDescrambleOcam2')
+dao_c_prog('daoComputeIntensityPws')
+if is_win:
+	print('Skipping daoStatShm/daoStatDoubleShm (2D VLA unsupported on MSVC).')
+else:
+	dao_c_prog('daoStatShm')
+	dao_c_prog('daoStatDoubleShm')
+dao_c_prog('daoPixelExtract')
+dao_c_prog('daoPixelSubstractExtract')
+dao_c_prog('daoPixelSubstractExtractNorm')
+dao_c_prog('daoPixelSubstractExtractNormImage')
+dao_c_prog('daoHighPassFilter')
+dao_c_prog('daoModesCutoff')
+dao_c_prog('daoDmCombiner', ncurses=True)
+dao_c_prog('daoApplyGain')
+dao_c_prog('daoShmConcatenate')
+dao_c_prog('daoShmConcatenateFine', ncurses=True)
+dao_c_prog('daoShmAdd')
+
+# Linux-only helper for /dev/cpu_dma_latency
+if not is_win:
+	dao_c_prog('daoSetLatency')
+else:
+	print('Skipping daoSetLatency (Linux-only).')
+
+# daoDownsample needs daoNuma/daoProto (not supported on Windows daoBase).
+if not is_win:
+	bld.program(
+		source='daoDownsample.cpp',
+		target='daoDownsample',
+		includes=includes,
+		linkflags=my_link_flags,
+		ldflags=['-ldao', '-lpthread', '-ldaoNuma', '-ldaoProto'] + my_ld_flags,
+		use='daoTools CLI11 PROTOBUF ZMQ',
+		cxxflags=['-O3', '-fno-tree-vectorize', '-Wall', '-Wextra', '-pipe', '-fdiagnostics-color=auto', '-std=c++17']
+	)
+else:
+	print('Skipping daoDownsample (daoNuma/daoProto unavailable on Windows).')
+
+if bld.env.BLAS_AVAILABLE and not is_win:
+	dao_c_prog('daoMvM', ncurses=True, extra_ld=['-lopenblas'])
+else:
+	print('Skipping daoMvM build (BLAS not available).')
+
+if bld.env.CUDA_AVAILABLE and not is_win:
+	bld.program(
+		source='daoMvMGPU.c',
+		target='daoMvMGPU',
+		includes=['../include', daoroot + '/include/'] + bld.env.INCLUDES_CUDA,
+		linkflags=my_link_flags + ['-L' + p for p in bld.env.LIBPATH_CUDA],
+		ldflags=['-ldao', '-lpthread', '-lm', '-lcublas', '-lcudart'] + my_ld_flags,
+		use='daoTools',
+		cflags=my_cflags + ['-Wall', '-Wextra', '-pipe', '-fdiagnostics-color=auto'],
+	)
+else:
+	print('Skipping daoMvMGPU build (CUDA not available).')
+
+# daoDAQ needs daoNuma/daoProto and Linux-oriented cxxflags.
+if not is_win:
+	bld.recurse('daoDAQ')
+else:
+	print('Skipping daoDAQ (not supported on Windows build).')

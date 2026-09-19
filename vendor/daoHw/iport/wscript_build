@@ -1,0 +1,51 @@
+#! /usr/bin/env python
+import platform, os
+# additional_flags
+add_ld_flags = ['']
+add_c_flags  = ['']
+add_cxx_flags= ['']
+add_lib_path = ['']
+
+
+if platform.system() == "Darwin":
+    add_ld_flags += ['-L/opt/homebrew/lib']
+    add_cxx_flags += ['-std=c++17']
+    add_c_flags += ['']
+else:
+	add_ld_flags += ['-lnuma']
+	add_cxx_flags += ['']
+	add_c_flags +=  ['-lrt']
+	my_ld_flags = ['-lrt']
+	add_lib_path = ['/opt/pleora/ebus_sdk/RHEL-CentOS-x86_64/lib', '/opt/pleora/ebus_sdk/Ubuntu-20.04-x86_64/lib']
+
+if bld.options.debug_flag:
+    add_c_flags+=['-g']
+    add_cxx_flags+=['-g']
+    
+if bld.options.sanitizer_flag:
+    add_c_flags+=['-g', '-fsanitize=address']
+    add_cxx_flags+=['-g']
+    add_ld_flags+=['-fsanitize=address']
+    
+
+daoIportGetConfig = bld.program(
+	source = 'daoIportGetConfig.cpp',
+	target = 'daoIportGetConfig',
+	includes = ['../include', os.getenv('DAOROOT')+'/include/', '/opt/pleora/ebus_sdk/RHEL-CentOS-x86_64/include/','/opt/pleora/ebus_sdk/Ubuntu-20.04-x86_64/include'],
+	libpath = [os.getenv('DAOROOT')+'/lib',os.getenv('DAOROOT')+'/lib64/', '/opt/pleora/ebus_sdk/RHEL-CentOS-x86_64/lib','/opt/pleora/ebus_sdk/Ubuntu-20.04-x86_64/lib'] + add_lib_path,
+	ldflags = my_ld_flags+['-ldao' , '-ldaoTools', '-lpthread', '-lm'],
+    lib = ['PvAppUtils', 'PtConvertersLib', 'PvBase', 'PvBuffer', 'PvGenICam', 'PvSystem', 'PvStream', 'PvDevice', 'PvTransmitter', 'PvVirtualDevice', 'PvPersistence', 'PvSerial', 'PvCameraBridge'],
+	cflags = ['-Ofast', '-Wall', '-Wextra', '-pipe', '-fdiagnostics-color'],
+	use = ['daoBase']
+	)
+
+daoIportWriteConfig = bld.program(
+	source = 'daoIportWriteConfig.cpp',
+	target = 'daoIportWriteConfig',
+	includes = ['../include', os.getenv('DAOROOT')+'/include/', '/opt/pleora/ebus_sdk/RHEL-CentOS-x86_64/include/', '/opt/pleora/ebus_sdk/Ubuntu-20.04-x86_64/include'],
+	libpath = [os.getenv('DAOROOT')+'/lib',os.getenv('DAOROOT')+'/lib64/', '/opt/pleora/ebus_sdk/RHEL-CentOS-x86_64/lib', '/opt/pleora/ebus_sdk/Ubuntu-20.04-x86_64/lib'] + add_lib_path,
+	ldflags = my_ld_flags+['-ldao' , '-ldaoTools', '-lpthread', '-lm'],
+    lib = ['PvAppUtils', 'PtConvertersLib', 'PvBase', 'PvBuffer', 'PvGenICam', 'PvSystem', 'PvStream', 'PvDevice', 'PvTransmitter', 'PvVirtualDevice', 'PvPersistence', 'PvSerial', 'PvCameraBridge'],
+	cflags = ['-Ofast', '-Wall', '-Wextra', '-pipe', '-fdiagnostics-color'],
+	use = ['daoBase']
+	)

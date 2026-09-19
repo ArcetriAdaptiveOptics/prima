@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>550</width>
+    <height>492</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Ekarus DM Control</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QMainWindow, QWidget {
+    background-color: #0b1740;
+    color: #e8eef7;
+}
+
+QLabel { color: #e8eef7; }
+
+QPushButton {
+    background-color: rgba(24, 72, 120, 0.55);
+    color: #eaf6f2;
+    border: 1px solid #30c0a8;
+    border-radius: 4px;
+    padding: 3px 6px;
+}
+QPushButton:hover   { background-color: rgba(48, 192, 168, 0.30); }
+QPushButton:pressed { background-color: rgba(48, 192, 168, 0.50); }
+</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+
+   <widget class="QLabel" name="titleLabel_total">
+    <property name="geometry"><rect><x>365</x><y>15</y><width>165</width><height>18</height></rect></property>
+    <property name="text"><string>DM command (dm1Cmd)</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+   </widget>
+   <widget class="GraphicsView" name="graphicsView_total">
+    <property name="geometry"><rect><x>365</x><y>35</y><width>160</width><height>160</height></rect></property>
+   </widget>
+   <widget class="QLabel" name="minmaxLabel_total">
+    <property name="geometry"><rect><x>365</x><y>197</y><width>160</width><height>16</height></rect></property>
+    <property name="text"><string>min / max</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+   </widget>
+
+   <widget class="QLabel" name="titleLabel_0">
+    <property name="geometry"><rect><x>15</x><y>15</y><width>165</width><height>18</height></rect></property>
+    <property name="text"><string>Channel 0 - flat</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+   </widget>
+   <widget class="GraphicsView" name="graphicsView_0">
+    <property name="geometry"><rect><x>15</x><y>35</y><width>160</width><height>160</height></rect></property>
+   </widget>
+   <widget class="QLabel" name="minmaxLabel_0">
+    <property name="geometry"><rect><x>15</x><y>197</y><width>160</width><height>16</height></rect></property>
+    <property name="text"><string>min / max</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+   </widget>
+   <widget class="QPushButton" name="openButton_0">
+    <property name="geometry"><rect><x>15</x><y>215</y><width>160</width><height>26</height></rect></property>
+    <property name="text"><string>Open channel 0 ctrl</string></property>
+   </widget>
+
+   <widget class="QLabel" name="titleLabel_1">
+    <property name="geometry"><rect><x>190</x><y>15</y><width>165</width><height>18</height></rect></property>
+    <property name="text"><string>Channel 1 - integrator</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+   </widget>
+   <widget class="GraphicsView" name="graphicsView_1">
+    <property name="geometry"><rect><x>190</x><y>35</y><width>160</width><height>160</height></rect></property>
+   </widget>
+   <widget class="QLabel" name="minmaxLabel_1">
+    <property name="geometry"><rect><x>190</x><y>197</y><width>160</width><height>16</height></rect></property>
+    <property name="text"><string>min / max</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+   </widget>
+   <widget class="QPushButton" name="openButton_1">
+    <property name="geometry"><rect><x>190</x><y>215</y><width>160</width><height>26</height></rect></property>
+    <property name="text"><string>Open channel 1 ctrl</string></property>
+   </widget>
+
+   <widget class="QLabel" name="titleLabel_2">
+    <property name="geometry"><rect><x>15</x><y>250</y><width>165</width><height>18</height></rect></property>
+    <property name="text"><string>Channel 2</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+   </widget>
+   <widget class="GraphicsView" name="graphicsView_2">
+    <property name="geometry"><rect><x>15</x><y>270</y><width>160</width><height>160</height></rect></property>
+   </widget>
+   <widget class="QLabel" name="minmaxLabel_2">
+    <property name="geometry"><rect><x>15</x><y>432</y><width>160</width><height>16</height></rect></property>
+    <property name="text"><string>min / max</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+   </widget>
+   <widget class="QPushButton" name="openButton_2">
+    <property name="geometry"><rect><x>15</x><y>450</y><width>160</width><height>26</height></rect></property>
+    <property name="text"><string>Open channel 2 ctrl</string></property>
+   </widget>
+
+   <widget class="QLabel" name="titleLabel_3">
+    <property name="geometry"><rect><x>190</x><y>250</y><width>165</width><height>18</height></rect></property>
+    <property name="text"><string>Channel 3</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+   </widget>
+   <widget class="GraphicsView" name="graphicsView_3">
+    <property name="geometry"><rect><x>190</x><y>270</y><width>160</width><height>160</height></rect></property>
+   </widget>
+   <widget class="QLabel" name="minmaxLabel_3">
+    <property name="geometry"><rect><x>190</x><y>432</y><width>160</width><height>16</height></rect></property>
+    <property name="text"><string>min / max</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+   </widget>
+   <widget class="QPushButton" name="openButton_3">
+    <property name="geometry"><rect><x>190</x><y>450</y><width>160</width><height>26</height></rect></property>
+    <property name="text"><string>Open channel 3 ctrl</string></property>
+   </widget>
+
+   <widget class="QLabel" name="titleLabel_off">
+    <property name="geometry"><rect><x>365</x><y>250</y><width>165</width><height>18</height></rect></property>
+    <property name="text"><string>DM offset (dm1CmdOffset)</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+   </widget>
+   <widget class="GraphicsView" name="graphicsView_off">
+    <property name="geometry"><rect><x>365</x><y>270</y><width>160</width><height>160</height></rect></property>
+   </widget>
+   <widget class="QLabel" name="minmaxLabel_off">
+    <property name="geometry"><rect><x>365</x><y>432</y><width>160</width><height>16</height></rect></property>
+    <property name="text"><string>min / max</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+   </widget>
+   <widget class="QPushButton" name="openButton_off">
+    <property name="geometry"><rect><x>365</x><y>450</y><width>160</width><height>26</height></rect></property>
+    <property name="text"><string>Open DM offset ctrl</string></property>
+   </widget>
+
+  </widget>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>GraphicsView</class>
+   <extends>QGraphicsView</extends>
+   <header>pyqtgraph</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

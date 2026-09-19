@@ -1,0 +1,27 @@
+#!/bin/bash
+echo "Stopping and cleaning up Ekarus"
+datestr="$( date -u )"
+echo "$datestr" 
+
+# Stop the ORCA (Hamamatsu) streamer gracefully first: Ctrl-C it and wait for
+# its clean DCAM teardown before killing tmux, otherwise the USB camera is left
+# open/streaming and the next start has to wait out the USB stack.
+if tmux has-session -t ORCA_CONTROL 2>/dev/null; then
+    echo "Stopping ORCA streamer..."
+    tmux send-keys -t ORCA_CONTROL C-c 2>/dev/null
+    for _ in $(seq 1 30); do
+        pgrep -f 'daoOrcaCtrl\.py' > /dev/null || break
+        sleep 0.5
+    done
+fi
+
+echo "Killing all tmux sessions..."
+tmux kill-server 2>/dev/null
+
+echo "Deleting all shared memory segments..."
+rm -f /tmp/*.im.shm
+
+echo "Deleting all semaphores..."
+rm -f /dev/shm/sem*
+
+echo "Ekarus cleanup complete."

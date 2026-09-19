@@ -1,0 +1,52 @@
+#! /usr/bin/env python
+import os
+import platform
+
+daoroot = os.getenv('DAOROOT', '')
+vcpkg = os.getenv('VCPKG_PREFIX', r'C:/Users/labot/DAO/vcpkg/installed/x64-windows')
+wincompat = os.getenv('DAO_WINCOMPAT', r'C:/Users/labot/DAO/wincompat')
+
+if platform.system() == "Darwin":
+	my_ld_flags = ['']
+	my_link_flags = ['-L' + daoroot + '/lib/']
+	my_cxx_flags = ['-std=c++14']
+	my_cflags = ['-O3', '-ffast-math']
+	sources = ['c/daoTools.c']
+elif platform.system() == "Windows":
+	my_ld_flags = ['advapi32.lib']
+	my_link_flags = [
+		'/LIBPATH:' + daoroot + '/lib',
+		'/LIBPATH:' + vcpkg + '/lib',
+	]
+	my_cxx_flags = ['/std:c++17', '/EHsc', '/D_CRT_SECURE_NO_WARNINGS', '/D_CRT_NONSTDC_NO_DEPRECATE']
+	my_cflags = ['/O2', '/W3', '/D_CRT_SECURE_NO_WARNINGS', '/D_CRT_NONSTDC_NO_DEPRECATE', '/D_USE_MATH_DEFINES']
+	sources = ['c/daoTools.c', 'c/daoTools_win_rt.c']
+else:
+	my_ld_flags = ['-lrt']
+	my_link_flags = ['-L' + daoroot + '/lib/', '-L' + daoroot + '/lib64/']
+	my_cxx_flags = ['']
+	my_cflags = ['-Ofast', '-march=native', '-funroll-loops']
+	sources = ['c/daoTools.c']
+
+includes = '../include ' + daoroot + '/include/'
+if platform.system() == "Windows":
+	includes += ' ' + wincompat + ' ' + vcpkg + '/include'
+
+kw = dict(
+	source=sources,
+	includes=includes,
+	linkflags=my_link_flags,
+	target='daoTools',
+	name='daoTools',
+	vnum='0.0.1',
+)
+
+if platform.system() == "Windows":
+	kw['cflags'] = my_cflags
+	kw['lib'] = ['dao', 'pthreadVC3']
+	kw['ldflags'] = my_ld_flags
+	bld.stlib(**kw)
+else:
+	kw['cflags'] = my_cflags + ['-Wall', '-Wextra', '-pipe', '-fdiagnostics-color=auto', '-fstack-protector']
+	kw['ldflags'] = ['-ldao', '-lpthread', '-lm'] + my_ld_flags
+	bld.shlib(**kw)

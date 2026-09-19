@@ -1,0 +1,75 @@
+#!/bin/bash
+daoEkarusLaunchMessage
+echo "Starting Ekarus pyramid pipeline process..."
+datestr="$( date -u )"
+echo "$datestr" 
+
+# TODO: add proper cores for each process 
+CENTROID_CORES="18"
+CALIBRATION_CORES="19"
+S2M_CORES="20-23"
+M2C_CORES="24-27"
+INTEGRATOR_CORES="28"
+
+# All SHM names are defined in daoEkarusShmNames.py, but for now we will define them here as well. 
+# probably should add a way to extract them from python script.
+RAW_IMAGE="/tmp/ocam2.im.shm"
+BACKGROUND_IMAGE="/tmp/ocam2Bg.im.shm"
+FLAT_FIELD_IMAGE="/tmp/ocam2Ff.im.shm"
+CAL_IMAGE="/tmp/ocam2Cal.im.shm"
+
+REFERENCE_IMAGE="/tmp/ocam2Ref.im.shm"
+VALID_PIXEL_MAP="/tmp/papyrus_valid_mask.im.shm"
+EXTRACTED_CENTROIDS="/tmp/ocam2Centroids.im.shm"
+
+S2M="/tmp/papyrus_CM.im.shm"
+MODES="/tmp/wfs1Modes.im.shm"
+MODES_GAIN="/tmp/wfs1ModesGain.im.shm"
+MODES_WITH_GAIN="/tmp/wfs1ModesWithGain.im.shm"
+
+M2C="/tmp/dm1m2c.im.shm"
+RES_WF="/tmp/dm1resWf.im.shm"
+
+DM1_LOOP_CMD="/tmp/dm1_lpCmd.im.shm"
+DM1_LOOP_GAIN="/tmp/dm1_lpGain.im.shm"
+DM1_LOOP_LEAK="/tmp/dm1_lpLeak.im.shm"
+DM1_CMD_01="/tmp/dm1Cmd01.im.shm"
+DM1_OFFSET="/tmp/dm1CmdOffset.im.shm"
+
+
+# START Pixel Calibrator
+tmuxname="OCAM_PIXEL_CALIBRATOR"
+cmd="taskset -c $CALIBRATION_CORES daoPixelCalibrate -S $RAW_IMAGE $FLAT_FIELD_IMAGE $BACKGROUND_IMAGE $CAL_IMAGE -L"
+daoTmux $tmuxname "$cmd"
+echo "Done starting $1 process."
+
+# START Centroid Extractor
+tmuxname="CENTROID_EXTRACTOR"
+#cmd="taskset -c $CENTROID_CORES daoPixelSubstractExtractNorm -S $CAL_IMAGE $REFERENCE_IMAGE $VALID_PIXEL_MAP $EXTRACTED_CENTROIDS -s 1 -L"
+cmd="taskset -c $CENTROID_CORES daoPixelSubstractExtractNormImage -S $CAL_IMAGE $REFERENCE_IMAGE $VALID_PIXEL_MAP $EXTRACTED_CENTROIDS -s 1 -L"
+daoTmux $tmuxname "$cmd"
+echo "Done starting $1 process."
+
+# START Slopes to Mode projection
+tmuxname="S2M_MVM"
+cmd="taskset -c $S2M_CORES daoMvMGPU -S $EXTRACTED_CENTROIDS $S2M $MODES -L"
+daoTmux $tmuxname "$cmd"
+echo "Done starting $1 process."
+
+# START Slopes to Mode projection
+tmuxname="APPLY_MODE_GAIN"
+cmd="taskset -c $S2M_CORES daoApplyGain -S $MODES $MODES_GAIN $MODES_WITH_GAIN -L"
+daoTmux $tmuxname "$cmd"
+echo "Done starting $1 process."
+
+# START Modes to Commands projection
+tmuxname="M2C_MVM"
+cmd="taskset -c $M2C_CORES daoMvM -S $MODES_WITH_GAIN $M2C $RES_WF -L"
+daoTmux $tmuxname "$cmd"
+echo "Done starting $1 process."
+
+# START Leaky Integrator
+tmuxname="LEAKY_INTEGRATOR"
+cmd="taskset -c $INTEGRATOR_CORES daoLeakyIntegrator -S $RES_WF $DM1_OFFSET $DM1_CMD_01 $DM1_LOOP_CMD $DM1_LOOP_GAIN $DM1_LOOP_LEAK -L"
+daoTmux $tmuxname "$cmd"
+echo "Done starting $1 process."

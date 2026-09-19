@@ -1,0 +1,25 @@
+[Unit]
+Description=EKARUS ICD Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+Environment=HOME=%h
+Environment=CUDA_HOME=/usr/local/cuda
+Environment=DAOROOT=%h/DAOROOT
+Environment=DAODATA=%h/DAODATA
+Environment=ACECFG=%h/DAODATA
+Environment=PATH=%h/DAOROOT/bin:%h/bin:%h/miniconda3/bin:%h/miniconda3/condabin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONPATH=%h/DAOROOT/python
+Environment=PKG_CONFIG_PATH=%h/DAOROOT/lib/pkgconfig
+Environment=LD_LIBRARY_PATH=%h/DAOROOT/lib:%h/DAOROOT/lib64:%h/RISTRETTO/ARPOGE/lib:/usr/local/lib/x86_64-linux-gnu:/opt/pleora/ebus_sdk/Ubuntu-20.04-x86_64/lib:/usr/user/cuda/lib64:/usr/local/PI/bin:/usr/local/PI/pi_gcs_translator
+ExecStart=%h/DAOROOT/bin/daoEkarusServer.py --log-level INFO
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=daoEkarusServer
+
+[Install]
+WantedBy=default.target

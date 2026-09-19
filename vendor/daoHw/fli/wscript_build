@@ -1,0 +1,38 @@
+#! /usr/bin/env python
+import platform, os
+# additional_flags
+add_ld_flags = ['']
+add_c_flags  = ['']
+add_cxx_flags= ['']
+add_lib_path = ['']
+
+
+if platform.system() == "Darwin":
+    add_ld_flags += ['-L/opt/homebrew/lib']
+    add_cxx_flags += ['-std=c++17']
+    add_c_flags += ['']
+else:
+	add_ld_flags += ['-lnuma']
+	add_cxx_flags += ['']
+	add_c_flags +=  ['-lrt']
+	my_ld_flags = ['-lrt']
+	add_lib_path = ['/opt/EDTpdv']
+
+if bld.options.debug_flag:
+    add_c_flags+=['-g']
+    add_cxx_flags+=['-g']
+    
+if bld.options.sanitizer_flag:
+    add_c_flags+=['-g', '-fsanitize=address']
+    add_cxx_flags+=['-g']
+    add_ld_flags+=['-fsanitize=address']
+    
+daoFliEdtCred1Ctrl = bld.program(
+	source = 'daoFliEdtCred1Ctrl.c',
+	target = 'daoFliEdtCred1Ctrl',
+	includes = ['../include', os.getenv('DAOROOT')+'/include/', '/opt/EDTpdv/'],
+	libpath = [os.getenv('DAOROOT')+'/lib',os.getenv('DAOROOT')+'/lib64/', '/opt/EDTpdv/'] + add_lib_path,
+	ldflags = my_ld_flags+['-lpdv', '-ldao' , '-ldaoTools', '-lpthread', '-lm'],
+	cflags = ['-Ofast', '-Wall', '-Wextra', '-pipe', '-fdiagnostics-color'],
+	use = ['daoBase']
+	)

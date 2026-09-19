@@ -1,0 +1,32 @@
+#!/bin/bash
+daoEkarusLaunchMessage
+echo "Starting CBLUE camera process..."
+datestr="$( date -u )"
+echo "$datestr" 
+
+arv-tool-0.8 -a 169.254.123.124 control DeviceFanMode=Manual
+arv-tool-0.8 -a 169.254.123.124 control DeviceFanSpeed=0
+arv-tool-0.8 -a 169.254.123.124 control DeviceIndicatorMode=Inactive
+# CONTROL MAIN
+tmuxname="CBLUE_ACQUISITION"
+cmd="daoGigeReaderV1 169.254.123.100 39433 /tmp/cblue.im.shm 624 816 8940"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+sleep 0.1
+echo "Executing $cmd in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $1 process."
+
+
+# ACQUISITION
+tmuxname="CBLUE_CONTROL"
+cmd="daoHwStandaloneCblueCtrl -d \"First Light Imaging-C-BLUE ONE 0.5 MP-01-00001f21a8cc\" -f /tmp/cblue.im.shm -p 4545 -s 8976"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+sleep 0.1
+echo "Executing $cmd in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $1 process."
+
+sleep 1
+daoEkarusStartCblueAqusition.py 

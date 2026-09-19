@@ -1,0 +1,11 @@
+sudo apt install meson
+sudo apt install libxml2-dev libglib2.0-dev cmake libusb-1.0-0-dev gobject-introspection \
+                 libgtk-3-dev gtk-doc-tools  xsltproc libgstreamer1.0-dev \
+                 libgstreamer-plugins-base1.0-dev libgstreamer-plugins-good1.0-dev \
+                 libgirepository1.0-dev gettext
+
+meson setup build
+cd build
+ninja
+ninja install
+

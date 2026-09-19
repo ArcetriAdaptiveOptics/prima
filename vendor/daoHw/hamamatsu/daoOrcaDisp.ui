@@ -1,0 +1,819 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>520</width>
+    <height>732</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>ORCA Control</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QWidget#Form {
+    background-color: #1e1e1e;
+}
+
+QLabel, QCheckBox, QGroupBox, QSpinBox, QDoubleSpinBox, QComboBox {
+    color: #dcdcdc;
+}
+
+QFrame#frame, QFrame#frame_2 {
+    background-color: #262626;
+    border: 1px solid #3c3c3c;
+    border-radius: 6px;
+}
+
+QPushButton {
+    background-color: #333333;
+    color: #dcdcdc;
+    border: 1px solid #555555;
+    border-radius: 4px;
+    padding: 3px 6px;
+}
+QPushButton:hover   { background-color: #3d3d3d; }
+QPushButton:pressed { background-color: #4a4a4a; }
+QPushButton:checked { background-color: #5a5a5a; color: #ffffff; }
+
+QSpinBox, QDoubleSpinBox, QComboBox {
+    background-color: #1c1c1c;
+    border: 1px solid #3c3c3c;
+    border-radius: 3px;
+    padding: 1px 3px;
+}
+
+QCheckBox::indicator {
+    width: 14px; height: 14px;
+    border: 1px solid #6e6e6e;
+    border-radius: 3px;
+    background: #1c1c1c;
+}
+QCheckBox::indicator:checked { background: #8a8a8a; }
+
+QProgressBar {
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    text-align: center;
+    color: #dcdcdc;
+    background: #1c1c1c;
+}
+QProgressBar::chunk {
+    background-color: #6a6a6a;
+    border-radius: 3px;
+}
+
+QLabel#msgLabel {
+    border: 1px solid #4a4a4a;
+    border-radius: 3px;
+    color: #c8c8c8;
+}
+
+QComboBox QAbstractItemView {
+    background-color: #262626;
+    color: #dcdcdc;
+    selection-background-color: #454545;
+    selection-color: #ffffff;
+    border: 1px solid #6e6e6e;
+    outline: 0;
+}
+</string>
+  </property>
+  <widget class="QLabel" name="statsLabel">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>0</y>
+     <width>400</width>
+     <height>26</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string/>
+   </property>
+  </widget>
+  <widget class="QLabel" name="freqLabel">
+   <property name="geometry">
+    <rect>
+     <x>420</x>
+     <y>0</y>
+     <width>90</width>
+     <height>26</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>--- Hz</string>
+   </property>
+  </widget>
+  <widget class="GraphicsView" name="imageView">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>30</y>
+     <width>470</width>
+     <height>351</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="saturationProgressBar">
+   <property name="geometry">
+    <rect>
+     <x>488</x>
+     <y>30</y>
+     <width>21</width>
+     <height>351</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Vertical</enum>
+   </property>
+   <property name="textDirection">
+    <enum>QProgressBar::TopToBottom</enum>
+   </property>
+  </widget>
+  <widget class="QLabel" name="cmapLabel">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>388</y>
+     <width>45</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Cmap:</string>
+   </property>
+  </widget>
+  <widget class="QComboBox" name="cmapComboBox">
+   <property name="geometry">
+    <rect>
+     <x>58</x>
+     <y>388</y>
+     <width>88</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>grey</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>hot</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>viridis</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>inferno</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QPushButton" name="freezeButton">
+   <property name="geometry">
+    <rect>
+     <x>152</x>
+     <y>388</y>
+     <width>66</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Freeze</string>
+   </property>
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="extractZoomButton">
+   <property name="geometry">
+    <rect>
+     <x>224</x>
+     <y>388</y>
+     <width>104</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Zoom &#8594; ROI</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="resetZoomButton">
+   <property name="geometry">
+    <rect>
+     <x>334</x>
+     <y>388</y>
+     <width>90</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Full view</string>
+   </property>
+  </widget>
+  <widget class="QComboBox" name="scaleComboBox">
+   <property name="geometry">
+    <rect>
+     <x>430</x>
+     <y>388</y>
+     <width>80</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Linear</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Sqrt</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>Log</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QCheckBox" name="autoCheckBox">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>416</y>
+     <width>50</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Auto</string>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+  </widget>
+  <widget class="QLabel" name="minLabel">
+   <property name="geometry">
+    <rect>
+     <x>64</x>
+     <y>416</y>
+     <width>30</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Min:</string>
+   </property>
+  </widget>
+  <widget class="QDoubleSpinBox" name="minSpin">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>96</x>
+     <y>416</y>
+     <width>78</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="decimals">
+    <number>1</number>
+   </property>
+   <property name="minimum">
+    <double>-1000000000.000000000000000</double>
+   </property>
+   <property name="maximum">
+    <double>1000000000.000000000000000</double>
+   </property>
+  </widget>
+  <widget class="QLabel" name="maxLabel">
+   <property name="geometry">
+    <rect>
+     <x>180</x>
+     <y>416</y>
+     <width>30</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Max:</string>
+   </property>
+  </widget>
+  <widget class="QDoubleSpinBox" name="maxSpin">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>212</x>
+     <y>416</y>
+     <width>88</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="decimals">
+    <number>1</number>
+   </property>
+   <property name="minimum">
+    <double>-1000000000.000000000000000</double>
+   </property>
+   <property name="maximum">
+    <double>1000000000.000000000000000</double>
+   </property>
+  </widget>
+  <widget class="QCheckBox" name="rollingCheckBox">
+   <property name="geometry">
+    <rect>
+     <x>310</x>
+     <y>416</y>
+     <width>80</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Rolling</string>
+   </property>
+  </widget>
+  <widget class="QCheckBox" name="crossCheckBox">
+   <property name="geometry">
+    <rect>
+     <x>394</x>
+     <y>416</y>
+     <width>60</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Cross</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="posLabel">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>442</y>
+     <width>320</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string/>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_2">
+   <property name="geometry">
+    <rect>
+     <x>420</x>
+     <y>442</y>
+     <width>90</width>
+     <height>18</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Saturometer</string>
+   </property>
+  </widget>
+  <widget class="QFrame" name="frame">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>468</y>
+     <width>500</width>
+     <height>148</height>
+    </rect>
+   </property>
+   <property name="frameShape">
+    <enum>QFrame::StyledPanel</enum>
+   </property>
+   <property name="frameShadow">
+    <enum>QFrame::Raised</enum>
+   </property>
+   <widget class="QLabel" name="ditLabel_1">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>12</y>
+      <width>135</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Exposure time (ms)</string>
+    </property>
+   </widget>
+   <widget class="QDoubleSpinBox" name="ditBox">
+    <property name="geometry">
+     <rect>
+      <x>150</x>
+      <y>12</y>
+      <width>80</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="decimals">
+     <number>3</number>
+    </property>
+    <property name="minimum">
+     <double>0.001000000000000</double>
+    </property>
+    <property name="maximum">
+     <double>60000.000000000000000</double>
+    </property>
+    <property name="value">
+     <double>35.000000000000000</double>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="ditButton">
+    <property name="geometry">
+     <rect>
+      <x>236</x>
+      <y>12</y>
+      <width>40</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>set</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="ditLabel_2">
+    <property name="geometry">
+     <rect>
+      <x>282</x>
+      <y>12</y>
+      <width>45</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>now:</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignRight|Qt::AlignVCenter</set>
+    </property>
+   </widget>
+   <widget class="QLabel" name="ditStatusLabel">
+    <property name="geometry">
+     <rect>
+      <x>332</x>
+      <y>12</y>
+      <width>158</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>---</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="fpsLabel_1">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>42</y>
+      <width>135</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Frame rate (Hz, 0=free)</string>
+    </property>
+   </widget>
+   <widget class="QDoubleSpinBox" name="fpsBox">
+    <property name="geometry">
+     <rect>
+      <x>150</x>
+      <y>42</y>
+      <width>80</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="decimals">
+     <number>2</number>
+    </property>
+    <property name="maximum">
+     <double>1000.000000000000000</double>
+    </property>
+    <property name="value">
+     <double>20.000000000000000</double>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="fpsButton">
+    <property name="geometry">
+     <rect>
+      <x>236</x>
+      <y>42</y>
+      <width>40</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>set</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="fpsLabel_2">
+    <property name="geometry">
+     <rect>
+      <x>282</x>
+      <y>42</y>
+      <width>45</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>now:</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignRight|Qt::AlignVCenter</set>
+    </property>
+   </widget>
+   <widget class="QLabel" name="fpsStatusLabel">
+    <property name="geometry">
+     <rect>
+      <x>332</x>
+      <y>42</y>
+      <width>158</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>---</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="readoutSpeedLabel">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>72</y>
+      <width>135</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Readout speed</string>
+    </property>
+   </widget>
+   <widget class="QComboBox" name="readoutSpeedComboBox">
+    <property name="geometry">
+     <rect>
+      <x>150</x>
+      <y>72</y>
+      <width>126</width>
+      <height>22</height>
+     </rect>
+    </property>
+   </widget>
+   <widget class="QLabel" name="readoutSpeedLabel_2">
+    <property name="geometry">
+     <rect>
+      <x>282</x>
+      <y>72</y>
+      <width>45</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>now:</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignRight|Qt::AlignVCenter</set>
+    </property>
+   </widget>
+   <widget class="QLabel" name="readoutSpeedStatusLabel">
+    <property name="geometry">
+     <rect>
+      <x>332</x>
+      <y>72</y>
+      <width>158</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>---</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="tempLabel">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>102</y>
+      <width>135</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Sensor temp (C)</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="tempStatusLabel">
+    <property name="geometry">
+     <rect>
+      <x>150</x>
+      <y>102</y>
+      <width>80</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>---</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="setTempLabel">
+    <property name="geometry">
+     <rect>
+      <x>232</x>
+      <y>102</y>
+      <width>40</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>set:</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignRight|Qt::AlignVCenter</set>
+    </property>
+   </widget>
+   <widget class="QDoubleSpinBox" name="setTempBox">
+    <property name="geometry">
+     <rect>
+      <x>276</x>
+      <y>102</y>
+      <width>70</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="decimals">
+     <number>1</number>
+    </property>
+    <property name="minimum">
+     <double>-50.000000000000000</double>
+    </property>
+    <property name="maximum">
+     <double>50.000000000000000</double>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="setTempButton">
+    <property name="geometry">
+     <rect>
+      <x>352</x>
+      <y>102</y>
+      <width>40</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>set</string>
+    </property>
+   </widget>
+  </widget>
+  <widget class="QFrame" name="frame_2">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>626</y>
+     <width>500</width>
+     <height>96</height>
+    </rect>
+   </property>
+   <property name="frameShape">
+    <enum>QFrame::StyledPanel</enum>
+   </property>
+   <property name="frameShadow">
+    <enum>QFrame::Raised</enum>
+   </property>
+   <widget class="QLabel" name="roiLabel">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>8</y>
+      <width>300</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>ROI   Width / CX / CY</string>
+    </property>
+   </widget>
+   <widget class="QSpinBox" name="ImageWidthBox">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>30</y>
+      <width>70</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="minimum">
+     <number>4</number>
+    </property>
+    <property name="maximum">
+     <number>4096</number>
+    </property>
+    <property name="singleStep">
+     <number>4</number>
+    </property>
+    <property name="value">
+     <number>512</number>
+    </property>
+   </widget>
+   <widget class="QSpinBox" name="ImageCenterXBox">
+    <property name="geometry">
+     <rect>
+      <x>85</x>
+      <y>30</y>
+      <width>70</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="minimum">
+     <number>0</number>
+    </property>
+    <property name="maximum">
+     <number>4096</number>
+    </property>
+    <property name="value">
+     <number>1024</number>
+    </property>
+   </widget>
+   <widget class="QSpinBox" name="ImageCenterYBox">
+    <property name="geometry">
+     <rect>
+      <x>160</x>
+      <y>30</y>
+      <width>70</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="minimum">
+     <number>0</number>
+    </property>
+    <property name="maximum">
+     <number>4096</number>
+    </property>
+    <property name="value">
+     <number>1024</number>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="roiApplyButton">
+    <property name="geometry">
+     <rect>
+      <x>245</x>
+      <y>30</y>
+      <width>100</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Apply ROI</string>
+    </property>
+   </widget>
+   <widget class="QPushButton" name="roiFullButton">
+    <property name="geometry">
+     <rect>
+      <x>350</x>
+      <y>30</y>
+      <width>100</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Full frame</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="msgLabel">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>62</y>
+      <width>480</width>
+      <height>24</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>---</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignCenter</set>
+    </property>
+   </widget>
+  </widget>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>GraphicsView</class>
+   <extends>QGraphicsView</extends>
+   <header>pyqtgraph</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

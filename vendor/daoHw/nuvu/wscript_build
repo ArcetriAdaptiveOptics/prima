@@ -1,0 +1,85 @@
+#! /usr/bin/env python
+import platform, os
+from waflib import Logs
+
+# additional_flags
+add_ld_flags   = []
+add_c_flags    = []
+add_cxx_flags  = []
+add_lib_path   = []
+my_ld_flags    = []
+
+if platform.system() == "Darwin":
+    add_ld_flags  += ['-L/opt/homebrew/lib']
+    add_cxx_flags += ['-std=c++17']
+else:
+    add_ld_flags  += ['-lnuma']
+    my_ld_flags   += ['-lrt']
+    add_c_flags   += ['-D_GNU_SOURCE']
+    add_lib_path  += ['/opt/NuvuCameras/lib/']
+
+if bld.options.debug_flag:
+    add_c_flags   += ['-g']
+    add_cxx_flags += ['-g']
+
+if bld.options.sanitizer_flag:
+    add_c_flags   += ['-g', '-fsanitize=address']
+    add_cxx_flags += ['-g', '-fsanitize=address']
+    add_ld_flags  += ['-fsanitize=address']
+
+#
+# Nüvü utility.c must be added as a Waf Node (absolute path strings can fail)
+#
+utility_c_path = '/opt/NuvuCameras/CameraExamples/Utility/utility.c'
+utility_c_node = bld.root.find_node(utility_c_path)
+
+if not utility_c_node:
+    Logs.warn("NUVU utility.c not found by waf: %s" % utility_c_path)
+    Logs.warn("If initialize()/cleanUp() are used, build will fail.")
+    utility_sources = []
+else:
+    Logs.info("Using NUVU utility.c: %s" % utility_c_path)
+    utility_sources = [utility_c_node]
+
+daoNuvu512Ctrl = bld.program(
+    source   = ['daoNuvu512Ctrl.c'],
+    target   = 'daoNuvu512Ctrl',
+    includes = [
+        '../include',
+        os.getenv('DAOROOT') + '/include/',
+        '/opt/NuvuCameras/include/',
+#        '/opt/NuvuCameras/CameraExamples/Utility',
+    ],
+    libpath  = [os.getenv('DAOROOT') + '/lib', os.getenv('DAOROOT') + '/lib64/'] + add_lib_path,
+    ldflags  = my_ld_flags + add_ld_flags + ['-lnuvu', '-ldao', '-ldaoTools', '-lpthread', '-lm'],
+    cflags   = ['-Ofast', '-Wall', '-Wextra', '-pipe', '-fdiagnostics-color'] + add_c_flags,
+    use      = ['daoBase'],
+)
+
+daoNuvu512SingleCtrl = bld.program(
+    source   = ['daoNuvu512SingleCtrl.c'],
+    target   = 'daoNuvu512SingleCtrl',
+    includes = [
+        '../include',
+        os.getenv('DAOROOT') + '/include/',
+        '/opt/NuvuCameras/include/',
+    ],
+    libpath  = [os.getenv('DAOROOT') + '/lib', os.getenv('DAOROOT') + '/lib64/'] + add_lib_path,
+    ldflags  = my_ld_flags + add_ld_flags + ['-lnuvu', '-ldao', '-ldaoTools', '-lpthread', '-lm'],
+    cflags   = ['-Ofast', '-Wall', '-Wextra', '-pipe', '-fdiagnostics-color'] + add_c_flags,
+    use      = ['daoBase'],
+)
+
+daoNuvu512MultiCtrl = bld.program(
+    source   = ['daoNuvu512MultiCtrl.c'],
+    target   = 'daoNuvu512MultiCtrl',
+    includes = [
+        '../include',
+        os.getenv('DAOROOT') + '/include/',
+        '/opt/NuvuCameras/include/',
+    ],
+    libpath  = [os.getenv('DAOROOT') + '/lib', os.getenv('DAOROOT') + '/lib64/'] + add_lib_path,
+    ldflags  = my_ld_flags + add_ld_flags + ['-lnuvu', '-ldao', '-ldaoTools', '-lpthread', '-lm'],
+    cflags   = ['-Ofast', '-Wall', '-Wextra', '-pipe', '-fdiagnostics-color'] + add_c_flags,
+    use      = ['daoBase'],
+)

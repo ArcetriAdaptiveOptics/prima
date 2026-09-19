@@ -1,0 +1,534 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# Sylvain Cetre and david barr
+import os, glob, platform
+
+# the following two variables are used by the target "waf dist"
+VERSION='0.0.1'
+APPNAME='daoHw'
+
+# if you want to cross-compile, use a different command line:
+# CC=mingw-gcc AR=mingw-ar waf configure build
+
+top = '.'
+docs = 'docs'
+
+from waflib import Configure, Logs, Utils, Context
+#Configure.autoconfig = True # True/False/'clobber'
+
+def build_docs(conf):
+	os.system("doxygen docs/Doxyfile")
+	os.system(f"make -C {docs} html")
+
+def clean_docs(conf):
+	os.system(f"make -C {docs} clean")
+
+def options(opt):
+    opt.load('cxx compiler_c compiler_cxx gnu_dirs waf_unit_test')
+
+    opt.add_option('--debug', dest='debug_flag', default=False, action='store_true',
+                help='Adds \'-g\' to compiler flags to allow for debuging')
+
+    opt.add_option('--sanitizer', dest='sanitizer_flag', default=False, action='store_true',
+                help='flags for address sanitsation')
+
+    opt.add_option('--test', dest='test_flag', default=False, action='store_true',
+                help='flags for running tests')
+
+    opt.add_option('--edt', dest='edt_path', default='',
+                   help='Root folder of EDT SDK install (e.g. /opt/EDTpdv). If empty, auto-detect.')
+
+    opt.add_option('--nuvu', dest='nuvu_path', default='',
+                   help='Root folder of NUVU SDK install. If empty, auto-detect.')
+
+    opt.add_option('--evt', dest='evt_path', default='',
+                   help='Root folder of EVT SDK install (e.g. /opt/EVT/eSDK). If empty, auto-detect.')
+
+    opt.add_option('--pleora', dest='pleora_path', default='',
+                   help='Root folder of Pleora eBUS SDK install '
+                        '(e.g. /opt/pleora/ebus_sdk/Ubuntu-20.04-x86_64). If empty, auto-detect.')
+
+
+def configure(conf):
+    conf.load('cxx compiler_c compiler_cxx gnu_dirs waf_unit_test')
+    conf.write_config_header('config.h')
+    print('prefix is ' + conf.options.prefix)
+
+    # check for aravis
+    try:
+        conf.check_cfg(package='aravis-0.8',
+                       args='--cflags --libs',
+                       uselib_store='ARAVIS')
+        conf.env.HAVE_ARAVIS = True
+    except:
+        conf.env.HAVE_ARAVIS = False
+        Logs.warn('Aravis not found. Skipping aravis build.')
+
+    # ---------------------------------------------------------------------
+    # EDT SDK
+    # ---------------------------------------------------------------------
+    conf.start_msg("Checking for EDT PDV SDK")
+
+    edt_roots = []
+    if conf.options.edt_path:
+        edt_roots.append(conf.options.edt_path)
+
+    # common places people install EDTpdv
+    edt_roots += [
+        os.getenv('EDT_ROOT', ''),
+        os.getenv('EDTPDV', ''),
+        '/opt/EDTpdv',
+        '/usr/local/EDTpdv',
+        '/opt/EDT',
+        '/usr/local/EDT',
+    ]
+    edt_roots = [p for p in edt_roots if p]  # remove empty
+
+    def try_edt(root):
+        inc_candidates = [
+            os.path.join(root, 'include'),
+            os.path.join(root, 'pdv'),
+            root,
+        ]
+        lib_candidates = [
+            os.path.join(root, 'lib'),
+            os.path.join(root, 'lib64'),
+            os.path.join(root, 'pdvlib'),
+            root,
+        ]
+
+        inc_candidates = [d for d in inc_candidates if os.path.isdir(d)]
+        lib_candidates = [d for d in lib_candidates if os.path.isdir(d)]
+
+        header_ok = False
+        for inc in inc_candidates:
+            try:
+                conf.check(header_name='edtinc.h',
+                           includes=[inc],
+                           mandatory=False)
+                header_ok = True
+                break
+            except:
+                pass
+
+        if not header_ok:
+            return False
+
+        lib_ok = False
+        for lib in lib_candidates:
+            try:
+                conf.check(lib='pdv',
+                           libpath=[lib],
+                           mandatory=False)
+                conf.check(lib='edt',
+                           libpath=[lib],
+                           mandatory=False)
+                lib_ok = True
+                break
+            except:
+                pass
+
+        if not lib_ok:
+            return False
+
+        conf.env.INCLUDES_EDT = inc_candidates
+        conf.env.LIBPATH_EDT  = lib_candidates
+        conf.env.LIB_EDT = ['pdv', 'edt']
+        return True
+
+    conf.env.HAVE_EDT = False
+    for root in edt_roots:
+        if try_edt(root):
+            conf.env.HAVE_EDT = True
+            conf.env.EDT_ROOT = root
+            break
+
+    if conf.env.HAVE_EDT:
+        conf.end_msg("found (%s)" % conf.env.EDT_ROOT)
+    else:
+        conf.end_msg("not found", color="YELLOW")
+        Logs.warn("EDT SDK not found. Skipping edt build. Use --edt=/path/to/EDTpdv")
+
+    # ---------------------------------------------------------------------
+    # NUVU SDK
+    # ---------------------------------------------------------------------
+    conf.start_msg("Checking for NUVU SDK")
+
+    nuvu_roots = []
+    if conf.options.nuvu_path:
+        nuvu_roots.append(conf.options.nuvu_path)
+
+    nuvu_roots += [
+        os.getenv('NUVU_ROOT', ''),
+        os.getenv('NUVUSDK', ''),
+        '/opt/NuvuCameras',
+        '/usr/local/NuvuCameras',
+    ]
+    nuvu_roots = [p for p in nuvu_roots if p]
+
+    def try_nuvu(root):
+        inc_candidates = [
+            os.path.join(root, 'include'),
+            os.path.join(root, 'inc'),
+            root,
+        ]
+        lib_candidates = [
+            os.path.join(root, 'lib'),
+            os.path.join(root, 'lib64'),
+            root,
+        ]
+
+        inc_candidates = [d for d in inc_candidates if os.path.isdir(d)]
+        lib_candidates = [d for d in lib_candidates if os.path.isdir(d)]
+
+        header_ok = False
+        for inc in inc_candidates:
+            try:
+                conf.check(header_name='nc_driver.h',
+                           includes=[inc],
+                           mandatory=False)
+                header_ok = True
+                break
+            except:
+                pass
+
+        if not header_ok:
+            return False
+
+        candidate_libs = ['nc_driver', 'nuvu', 'nc']
+        lib_ok = False
+        chosen_lib = None
+
+        for libdir in lib_candidates:
+            for libname in candidate_libs:
+                try:
+                    conf.check(lib=libname,
+                               libpath=[libdir],
+                               mandatory=False)
+                    chosen_lib = libname
+                    lib_ok = True
+                    break
+                except:
+                    pass
+            if lib_ok:
+                break
+
+        if not lib_ok:
+            return False
+
+        conf.env.INCLUDES_NUVU = inc_candidates
+        conf.env.LIBPATH_NUVU  = lib_candidates
+        conf.env.LIB_NUVU      = [chosen_lib]
+        return True
+
+    conf.env.HAVE_NUVU = False
+    for root in nuvu_roots:
+        if try_nuvu(root):
+            conf.env.HAVE_NUVU = True
+            conf.env.NUVU_ROOT = root
+            break
+
+    if conf.env.HAVE_NUVU:
+        conf.end_msg("found (%s)" % conf.env.NUVU_ROOT)
+    else:
+        conf.end_msg("not found", color="YELLOW")
+        Logs.warn("NUVU SDK not found. Skipping nuvu build. Use --nuvu=/path/to/sdk")
+
+    # ---------------------------------------------------------------------
+    # mudpi header
+    # ---------------------------------------------------------------------
+    MUDPI_EXPECTED_PATH: str = f"{os.getenv('DAOROOT')}/include/mudpi.h"
+    conf.start_msg("Checking for mudpi header")
+    conf.env.HAVE_MUDPI = conf.root.find_node(MUDPI_EXPECTED_PATH) != None
+    if conf.env.HAVE_MUDPI:
+        conf.end_msg(MUDPI_EXPECTED_PATH)
+    else:
+        conf.end_msg("not found", color="YELLOW")
+
+    # ---------------------------------------------------------------------
+    # EVT SDK
+    # ---------------------------------------------------------------------
+    conf.start_msg("Checking for EVT SDK")
+
+    evt_roots = []
+    if conf.options.evt_path:
+        evt_roots.append(conf.options.evt_path)
+
+    evt_roots += [
+        os.getenv('EVT_ROOT', ''),
+        '/opt/EVT/eSDK',
+        '/usr/local/EVT/eSDK',
+        '/opt/EVT',
+    ]
+    evt_roots = [p for p in evt_roots if p]
+
+    def try_evt(root):
+        inc_candidates = [
+            os.path.join(root, 'include'),
+            root,
+        ]
+        lib_candidates = [
+            os.path.join(root, 'lib'),
+            os.path.join(root, 'lib64'),
+            root,
+        ]
+
+        inc_candidates = [d for d in inc_candidates if os.path.isdir(d)]
+        lib_candidates = [d for d in lib_candidates if os.path.isdir(d)]
+
+        header_ok = False
+        for inc in inc_candidates:
+            try:
+                conf.check(header_name='EmergentCameraAPIs.h',
+                           includes=[inc],
+                           mandatory=False)
+                header_ok = True
+                break
+            except:
+                pass
+
+        if not header_ok:
+            return False
+
+        lib_ok = False
+        for libdir in lib_candidates:
+            try:
+                conf.check(lib='EmergentCamera',
+                           libpath=[libdir],
+                           mandatory=False)
+                lib_ok = True
+                break
+            except:
+                pass
+
+        if not lib_ok:
+            return False
+
+        conf.env.INCLUDES_EVT = inc_candidates
+        conf.env.LIBPATH_EVT  = lib_candidates
+        conf.env.LIB_EVT      = ['EmergentCamera', 'EmergentGigEVision', 'EmergentGenICam']
+        return True
+
+    conf.env.HAVE_EVT = False
+    for root in evt_roots:
+        if try_evt(root):
+            conf.env.HAVE_EVT = True
+            conf.env.EVT_ROOT = root
+            break
+
+    if conf.env.HAVE_EVT:
+        conf.end_msg("found (%s)" % conf.env.EVT_ROOT)
+    else:
+        conf.end_msg("not found", color="YELLOW")
+        Logs.warn("EVT SDK not found. Skipping evt build. Use --evt=/path/to/eSDK")
+
+    # ---------------------------------------------------------------------
+    # Pleora eBUS SDK (iport)
+    # ---------------------------------------------------------------------
+    conf.start_msg("Checking for Pleora eBUS SDK")
+
+    ebus_roots = []
+    if conf.options.pleora_path:
+        ebus_roots.append(conf.options.pleora_path)
+
+    ebus_roots += [
+        os.getenv('EBUS_ROOT', ''),
+        os.getenv('PUREGEV_ROOT', ''),
+        '/opt/pleora/ebus_sdk/Ubuntu-20.04-x86_64',
+        '/opt/pleora/ebus_sdk/RHEL-CentOS-x86_64',
+    ]
+    ebus_roots = [p for p in ebus_roots if p]
+
+    def try_ebus(root):
+        inc_candidates = [
+            os.path.join(root, 'include'),
+            root,
+        ]
+        lib_candidates = [
+            os.path.join(root, 'lib'),
+            os.path.join(root, 'lib64'),
+            root,
+        ]
+
+        inc_candidates = [d for d in inc_candidates if os.path.isdir(d)]
+        lib_candidates = [d for d in lib_candidates if os.path.isdir(d)]
+
+        header_ok = False
+        for inc in inc_candidates:
+            try:
+                conf.check(header_name='PvDevice.h',
+                           includes=[inc],
+                           mandatory=False)
+                header_ok = True
+                break
+            except:
+                pass
+
+        if not header_ok:
+            return False
+
+        lib_ok = False
+        for libdir in lib_candidates:
+            try:
+                conf.check(lib='PvBase',
+                           libpath=[libdir],
+                           mandatory=False)
+                lib_ok = True
+                break
+            except:
+                pass
+
+        if not lib_ok:
+            return False
+
+        conf.env.INCLUDES_EBUS = inc_candidates
+        conf.env.LIBPATH_EBUS  = lib_candidates
+        conf.env.LIB_EBUS = ['PvAppUtils', 'PtConvertersLib', 'PvBase', 'PvBuffer',
+                             'PvGenICam', 'PvSystem', 'PvStream', 'PvDevice',
+                             'PvTransmitter', 'PvVirtualDevice', 'PvPersistence',
+                             'PvSerial', 'PvCameraBridge']
+        return True
+
+    conf.env.HAVE_EBUS = False
+    for root in ebus_roots:
+        if try_ebus(root):
+            conf.env.HAVE_EBUS = True
+            conf.env.EBUS_ROOT = root
+            break
+
+    if conf.env.HAVE_EBUS:
+        conf.end_msg("found (%s)" % conf.env.EBUS_ROOT)
+    else:
+        conf.end_msg("not found", color="YELLOW")
+        Logs.warn("Pleora eBUS SDK not found. Skipping iport build. "
+                  "Use --pleora=/path/to/ebus_sdk")
+
+    # ---------------------------------------------------------------------
+    # pypylon Python module
+    # ---------------------------------------------------------------------
+    conf.start_msg("Checking for Python module pypylon")
+    conf.env.HAVE_PIPYLON = False
+    try:
+        import pypylon  # noqa: F401
+        conf.env.HAVE_PIPYLON = True
+        conf.end_msg("found")
+    except Exception:
+        conf.env.HAVE_PIPYLON = False
+        conf.end_msg("not found", color="YELLOW")
+
+    
+
+
+def build(bld):
+    bld.env.DEFINES=['WAF=1']
+
+    if bld.env.HAVE_ARAVIS:
+        bld.recurse('aravis')
+    else:
+        Logs.warn('Skipping build of aravis folder due to missing Aravis.')
+
+    if bld.env.HAVE_EDT:
+        bld.recurse('edt')
+    else:
+        Logs.warn('Skipping build of edt folder due to missing EDT SDK.')
+
+    if bld.env.HAVE_NUVU:
+        bld.recurse('nuvu')
+    else:
+        Logs.warn('Skipping build of nuvu folder due to missing NUVU SDK.')
+
+    if bld.env.HAVE_EVT:
+        bld.recurse('evt')
+    else:
+        Logs.warn('Skipping build of evt folder due to missing EVT SDK.')
+
+    # Common + apps: Linux/Darwin only (POSIX sockets / mudpi stack)
+    if platform.system() == 'Windows':
+        Logs.warn('Skipping common/ and apps/ on Windows (Aravis-only focus).')
+    else:
+        bld.recurse('common')
+        bld.recurse('apps')
+
+    if bld.env.HAVE_EBUS:
+        bld.recurse('iport')
+    else:
+        Logs.warn('Skipping build of iport folder due to missing Pleora eBUS SDK.')
+    # ---------------------------------------------------------------------
+    # installs (unchanged)
+    # ---------------------------------------------------------------------
+    bld.install_files(bld.env.PREFIX+'/bin', 'aravis/test/daoHwAravisTestCreateShm.py', chmod=0o755, relative_trick=False)
+    bld.install_files(bld.env.PREFIX+'/bin', 'aravis/test/daoHwAravisTest.py', chmod=0o755, relative_trick=False)
+    bld.install_files(bld.env.PREFIX+'/bin', 'aravis/daoHwOcamDescramble.py', chmod=0o755, relative_trick=False)
+
+    bld.install_files(bld.env.PREFIX+'/bin', 'common/python/daoSLMOpenCv.py', chmod=0o755, relative_trick=False)
+    bld.install_files(bld.env.PREFIX+'/bin', 'common/python/daoSLMPygame.py', chmod=0o755, relative_trick=False)
+
+    files = glob.glob('apps/*.py')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/bin', file, chmod=0o755, relative_trick=False)
+
+    files = glob.glob('edt/*.py')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/bin', file, chmod=0o755, relative_trick=False)
+
+    files = glob.glob('fli/*.py')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/bin', file, chmod=0o755, relative_trick=False)
+
+    files = glob.glob('ids/*.py')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/bin', file, chmod=0o755, relative_trick=False)
+
+    files = glob.glob('hamamatsu/*.py')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/bin', file, chmod=0o755, relative_trick=False)
+
+    files = glob.glob('hamamatsu/*.ui')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/data', file, relative_trick=False)
+
+    files = glob.glob('pi/*.py')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/bin', file, chmod=0o755, relative_trick=False)
+
+    files = glob.glob('thorlabs/*.py')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/bin', file, chmod=0o755, relative_trick=False)
+
+    files = glob.glob('rittal/*.py')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/bin', file, chmod=0o755, relative_trick=False)
+        bld.install_files(bld.env.PREFIX+'/python', file, chmod=0o755, relative_trick=False)
+
+    files = glob.glob('meadowlark/*.py')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/bin', file, chmod=0o755, relative_trick=False)
+
+    files = glob.glob('common/python/*.py')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/python', file, relative_trick=False)
+
+    files = glob.glob('gui/*.ui')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/data', file, relative_trick=False)
+
+    files = glob.glob('gui/*.py')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/bin', file, chmod=0o755, relative_trick=False)
+
+    files = glob.glob('config/*.py')
+    for file in files:
+        bld.install_files(bld.env.PREFIX+'/bin', file, chmod=0o755, relative_trick=False)
+
+    files = glob.glob('config/*.txt')
+    for file in files:
+        bld.install_files(os.getenv('DAODATA')+'/config', file, relative_trick=False)
+        
+    if bld.env.HAVE_PIPYLON:
+        Logs.info('Installing Basler camera files.')
+        files = glob.glob('basler/*.py')
+        for file in files:
+            Logs.info(f'Installing {file} to {bld.env.PREFIX}/bin')
+            bld.install_files(bld.env.PREFIX+'/bin', file,chmod=0o755, relative_trick=False)
+    else:
+        Logs.warn('Skipping install of Basler camera due to missing PILON SDK.')

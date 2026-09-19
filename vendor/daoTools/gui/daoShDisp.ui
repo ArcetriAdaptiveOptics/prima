@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="windowTitle">
+   <string>daoShRTD</string>
+  </property>
+
+  <widget class="QWidget" name="centralwidget">
+
+   <layout class="QVBoxLayout" name="verticalLayout">
+
+    <!-- ================= TOP DISPLAY AREA ================= -->
+
+    <item>
+     <layout class="QHBoxLayout" name="topLayout">
+
+      <!-- SH IMAGE -->
+      <item>
+       <widget class="GraphicsView" name="graphicsView_image"/>
+      </item>
+
+      <!-- IMAGE LUT -->
+      <item>
+       <widget class="GraphicsView" name="graphicsView_imageLUT"/>
+      </item>
+
+      <!-- INTENSITY MAP -->
+      <item>
+       <widget class="GraphicsView" name="graphicsView_intensity"/>
+      </item>
+
+      <!-- INTENSITY LUT -->
+      <item>
+       <widget class="GraphicsView" name="graphicsView_intensityLUT"/>
+      </item>
+
+     </layout>
+    </item>
+
+    <!-- ================= STATUS BAR ================= -->
+
+    <item>
+     <layout class="QHBoxLayout" name="bottomLayout">
+
+      <item>
+       <widget class="QCheckBox" name="checkBoxLog">
+        <property name="text">
+         <string>log scale</string>
+        </property>
+       </widget>
+      </item>
+
+      <item>
+       <widget class="QLabel" name="maxLabel">
+        <property name="text">
+         <string>max:</string>
+        </property>
+       </widget>
+      </item>
+
+      <item>
+       <widget class="QLabel" name="freqLabel">
+        <property name="text">
+         <string>0.00 Hz</string>
+        </property>
+       </widget>
+      </item>
+
+      <item>
+       <spacer name="horizontalSpacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </spacer>
+      </item>
+
+     </layout>
+    </item>
+
+   </layout>
+
+  </widget>
+
+ </widget>
+
+ <customwidgets>
+  <customwidget>
+   <class>GraphicsView</class>
+   <extends>QGraphicsView</extends>
+   <header>pyqtgraph</header>
+  </customwidget>
+ </customwidgets>
+
+ <resources/>
+ <connections/>
+</ui>

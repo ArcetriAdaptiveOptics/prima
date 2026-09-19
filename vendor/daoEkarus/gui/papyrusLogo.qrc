@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="newPrefix">
+    <file>logo_ekarus_cropped.png</file>
+    <file>daoLogo.png</file>
+  </qresource>
+</RCC>

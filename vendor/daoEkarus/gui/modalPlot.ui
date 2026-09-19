@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>700</width>
+    <height>500</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Modal Plot</string>
+  </property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item>
+    <widget class="QLabel" name="titleLabel">
+     <property name="text">
+      <string>Modal Decomposition</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">font-size: 14pt; font-weight: bold;</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QFrame" name="controlsFrame">
+     <property name="frameShape">
+      <enum>QFrame::StyledPanel</enum>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Raised</enum>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+      <height>75</height>
+      </size>
+     </property>
+     <layout class="QVBoxLayout" name="controlsLayout">
+      <item>
+       <layout class="QHBoxLayout" name="controlsTopLayout">
+      <item>
+       <widget class="QCheckBox" name="dmCheckBox">
+        <property name="text"><string>DM commands</string></property>
+        <property name="checked"><bool>true</bool></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="modeCheckBox">
+        <property name="text"><string>Reconstructed modes</string></property>
+        <property name="checked"><bool>true</bool></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="windowLabel">
+        <property name="text"><string>Averaging window [frames]</string></property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="windowComboBox">
+        <property name="editable">
+         <bool>false</bool>
+        </property>
+        <property name="currentText">
+         <string>1024</string>
+        </property>
+        <item>
+         <property name="text">
+          <string>256</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>512</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>1024</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>2048</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>4096</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>8192</string>
+         </property>
+        </item>
+        </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="controlsBottomLayout">
+                <property name="spacing">
+                 <number>4</number>
+                </property>
+        <item>
+         <widget class="QCheckBox" name="polModesCheckBox">
+          <property name="text"><string>POL modes</string></property>
+          <property name="checked"><bool>false</bool></property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="delayLabel">
+          <property name="text"><string>Delay [ms]</string></property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QDoubleSpinBox" name="delayInMsBox">
+                    <property name="maximumSize">
+                     <size>
+                        <width>65</width>
+                        <height>16777215</height>
+                     </size>
+                    </property>
+          <property name="decimals"><number>2</number></property>
+          <property name="minimum"><double>0.000000000000000</double></property>
+          <property name="maximum"><double>2000.000000000000000</double></property>
+          <property name="singleStep"><double>0.010000000000000</double></property>
+          <property name="value"><double>1.100000000000000</double></property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="modalView" native="true">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+       <horstretch>0</horstretch>
+       <verstretch>1</verstretch>
+      </sizepolicy>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="statusLabel">
+     <property name="text">
+      <string>Waiting for data...</string>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>20</height>
+      </size>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

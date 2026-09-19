@@ -1,0 +1,15 @@
+#!/bin/bash
+daoEkarusLaunchMessage
+echo "Starting CBLUE camera process..."
+datestr="$( date -u )"
+echo "$datestr" 
+
+# Start script to send MODULATOR commands to PAPY-WINDOWS
+PORT_MOD='12335'
+SHM_PATH='/tmp/modulator.im.shm'
+tmuxname="modulatorUDP"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+sleep 0.5
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "taskset -c 21-22 daoEkarusSendCommand.py $SHM_PATH 193.206.244.212 $PORT_MOD" C-M
+echo "Done launching UDP for modulator"

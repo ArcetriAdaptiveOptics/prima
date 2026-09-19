@@ -1,0 +1,129 @@
+#! /usr/bin/env python
+import platform, os
+
+daoroot = os.getenv('DAOROOT', '')
+vcpkg = os.getenv('VCPKG_PREFIX', r'C:/Users/labot/DAO/vcpkg/installed/x64-windows')
+wincompat = os.getenv('DAO_WINCOMPAT', r'C:/Users/labot/DAO/wincompat')
+is_win = platform.system() == "Windows"
+is_darwin = platform.system() == "Darwin"
+
+add_ld_flags = []
+add_c_flags = []
+add_include_path = ['../include', daoroot + '/include/']
+add_lib_path = []
+linkflags = []
+win_libs = ['dao', 'daoTools', 'pthreadVC3', 'ws2_32', 'advapi32']
+
+if is_darwin:
+    add_ld_flags += ['-L/opt/homebrew/lib', '-ldao', '-ldaoTools', '-lpthread', '-lm']
+    add_c_flags += ['-O3', '-ffast-math']
+    add_lib_path = [daoroot + '/lib']
+elif is_win:
+    add_c_flags += [
+        '/O2', '/W3', '/FS',
+        '/D_CRT_SECURE_NO_WARNINGS',
+        '/D_CRT_NONSTDC_NO_DEPRECATE',
+        '/D_USE_MATH_DEFINES',
+        '/DWIN32_LEAN_AND_MEAN',
+        '/D_WINSOCKAPI_',
+        '/FI' + wincompat.replace('\\', '/') + '/gcc_attrs.h',
+    ]
+    add_include_path += [wincompat, vcpkg + '/include']
+    add_lib_path = [daoroot + '/lib', vcpkg + '/lib']
+    linkflags = ['/LIBPATH:' + daoroot + '/lib', '/LIBPATH:' + vcpkg + '/lib']
+else:
+    add_ld_flags += ['-lnuma', '-lrt', '-ldao', '-ldaoTools', '-lpthread', '-lm']
+    add_c_flags += ['-Ofast']
+    add_include_path += [
+        '/usr/include/glib-2.0',
+        '/usr/lib64/glib-2.0/include',
+        '/usr/lib/x86_64-linux-gnu/glib-2.0/include',
+    ]
+    add_lib_path = [daoroot + '/lib', daoroot + '/lib64/']
+
+if bld.options.debug_flag:
+    add_c_flags += ['/Zi'] if is_win else ['-g']
+
+if bld.options.sanitizer_flag and not is_win:
+    add_c_flags += ['-g', '-fsanitize=address']
+    add_ld_flags += ['-fsanitize=address']
+
+wall = [] if is_win else ['-Wall', '-Wextra', '-pipe', '-fdiagnostics-color']
+dbg = ['/Zi'] if is_win else ['-g']
+
+
+def _prog(source, target, extra_cflags=None, use=None, no_daotools=False):
+    use = use or ['daoBase', 'ARAVIS']
+    kw = dict(
+        source=source,
+        target=target,
+        includes=add_include_path,
+        libpath=add_lib_path,
+        cflags=wall + add_c_flags + (extra_cflags or []),
+        use=use,
+    )
+    if is_win:
+        libs = list(win_libs)
+        if no_daotools:
+            libs = [x for x in libs if x != 'daoTools']
+        kw['lib'] = libs
+        kw['linkflags'] = list(linkflags)
+        kw['ldflags'] = []
+    else:
+        ld = list(add_ld_flags)
+        if no_daotools:
+            ld = [x for x in ld if x != '-ldaoTools']
+        kw['ldflags'] = ld
+    return bld.program(**kw)
+
+
+def _shlib(source, target, extra_cflags=None, use=None):
+    use = use or ['daoBase', 'ARAVIS']
+    kw = dict(
+        source=source,
+        target=target,
+        includes=add_include_path,
+        libpath=add_lib_path,
+        cflags=wall + add_c_flags + (extra_cflags or []),
+        use=use,
+    )
+    if is_win:
+        kw['lib'] = list(win_libs)
+        kw['linkflags'] = list(linkflags)
+        kw['ldflags'] = []
+    else:
+        kw['ldflags'] = list(add_ld_flags)
+    return bld.shlib(**kw)
+
+
+# Core Aravis camera controllers (needed on all platforms)
+_prog('daoHwAravisCtrl.c', 'daoHwAravisCtrl')
+_prog('daoHwAravisDeviceCtrl.c', 'daoHwAravisDeviceCtrl')
+_prog('arvdevicetest.c', 'arvdevicetest', no_daotools=True)
+_prog('daoHwFakeDeviceCtrl.c', 'daoHwFakeDeviceCtrl')
+_prog('daoHwBobDeviceCtrl.c', 'daoHwBobDeviceCtrl')
+_prog('daoHwBobDeviceSWTrigCtrl.c', 'daoHwBobDeviceSWTrigCtrl')
+_prog('daoHwCBlueDeviceCtrl.c', 'daoHwCBlueDeviceCtrl')
+_prog('daoHwCBlueDeviceCtrlSafe.c', 'daoHwCBlueDeviceCtrlSafe')
+_prog('daoHwAvtG030DeviceCtrl.c', 'daoHwAvtG030DeviceCtrl')
+_prog('daoHwAvtGC1020MDeviceCtrl.c', 'daoHwAvtGC1020MDeviceCtrl', extra_cflags=dbg)
+_prog('daoHwAvtGT1920DeviceControl.c', 'daoHwAvtGT1920DeviceControl', extra_cflags=dbg)
+_prog('daoHwFlirDeviceCtrl.c', 'daoHwFlirDeviceCtrl')
+_prog('daoHwAravisFakeCamera.c', 'daoHwAravisFakeCamera')
+_prog('daoHwBaslerDeviceCtrl.c', 'daoHwBaslerDeviceCtrl')
+_prog('daoHwBaslerWBinDeviceCtrl.c', 'daoHwBaslerWBinDeviceCtrl')
+if is_win:
+    print('Skipping daoHwEmergentCtrl on Windows (GCC __attribute__).')
+else:
+    _prog('daoHwEmergentCtrl.c', 'daoHwEmergentCtrl')
+
+# IPORT / raw-socket helpers: skip on Windows (need BSD sockets)
+if is_win:
+    print('Skipping daoIportControl* / IPORT-linked targets on Windows.')
+else:
+    _shlib('daoIportControl.c', 'daoIportControl', extra_cflags=dbg)
+    _prog('daoHwIPORTDeviceCtrl.c', 'daoHwIPORTDeviceCtrl', extra_cflags=dbg, use=['daoBase', 'ARAVIS', 'daoIportControl'])
+    _prog('daoIportControlMain.c', 'daoIportControlMain', extra_cflags=dbg, use=['daoBase', 'ARAVIS', 'daoIportControl'])
+    _prog('daoHwAvtControlMain.c', 'daoHwAvtControlMain', extra_cflags=dbg, use=['daoBase', 'ARAVIS', 'daoIportControl'])
+    _prog('daoHwStandaloneCblueCtrl.c', 'daoHwStandaloneCblueCtrl', extra_cflags=dbg, use=['daoBase', 'ARAVIS', 'daoIportControl'])
+    _prog('daoHwStandaloneEmergentCtrl.c', 'daoHwStandaloneEmergentCtrl', extra_cflags=dbg, use=['daoBase', 'ARAVIS', 'daoIportControl'])

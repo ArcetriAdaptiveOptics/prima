@@ -1,0 +1,26 @@
+#!/bin/bash
+daoEkarusLaunchMessage
+echo "Starting Ekarus DM468 process..."
+datestr="$( date -u )"
+echo "$datestr" 
+
+
+# START combiner
+tmuxname="DM1_COMBINER"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+cmd="taskset -c 43-47 daoShmCombiner -m 1 -S /tmp/dm1Cmd.im.shm 4 -L"
+sleep 0.5
+echo "Executing $cmd in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $1 process."
+
+# START DM controller
+tmuxname="DM1_CONTROLLER"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+cmd="taskset -c 43-47 daodmAlpaoCtrl -L BAX787 /tmp/dm1Cmd.im.shm"
+sleep 0.5
+echo "Executing $cmd in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $1 process."

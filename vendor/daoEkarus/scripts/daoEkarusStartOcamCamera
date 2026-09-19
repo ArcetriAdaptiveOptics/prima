@@ -1,0 +1,56 @@
+#!/bin/bash
+daoEkarusLaunchMessage
+echo "Starting Ekarus Ocam Camera process..."
+datestr="$( date -u )"
+echo "$datestr" 
+
+daoEkarusIportFirmwareUpdate
+
+daoHwLoadOcam2Lut.py # creates two shm for the ocam lut: /tmp/ocam2Lut.im.shm and '/tmp/ocam2LutBin.im.shm'
+# file is located here: /home/daouser/dao/Ekarus/daoHw/config/daoHwLoadOcam2Lut.py
+# Stop camera acquisition
+# stopAcquisition.py
+
+# CONTROL MAIN
+tmuxname="OCAM_WFS_CONTROL_MAIN"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+sleep 0.1
+echo "Executing daoIportControlMain -c \"Pleora Technologies Inc.-iPORT-CL-Ten-Full-00:11:1c:01:dc:e3\" -s /tmp/ocam2raw.im.shm -p 39433 in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "taskset -c 2 daoIportControlMain -c \"Pleora Technologies Inc.-iPORT-CL-Ten-Full-00:11:1c:01:dc:e3\" -s /tmp/ocam2raw.im.shm -p 39433" C-M
+echo "Done starting $1 process."
+
+
+# ACQUISITION
+tmuxname="OCAM_WFS_ACQUISITION"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+sleep 0.1
+echo "Executing daoGigeReaderV2 192.168.60.2 39433 /tmp/ocam2raw.im.shm 1056 121 8928 in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "daoGigeReaderV2 192.168.60.2 39433 /tmp/ocam2raw.im.shm 1056 121 8928" C-M
+echo "Done starting $1 process."
+
+
+# START camera Descrambler
+tmuxname="OCAM_WFS_DESCRAMBLER"
+tmux send-keys -t $tmuxname C-c 1> /dev/null
+cmd="taskset -c 12-17 daoDescrambleOcam2 -S /tmp/ocam2raw.im.shm /tmp/ocam2.im.shm /tmp/ocam2Lut.im.shm -b 1 -L"
+sleep 0.5
+echo "Executing $cmd in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $0 process."
+
+sleep 1
+
+tmuxname="OCAM_PARAMETERS"
+tmux send-keys -t $tmuxname C-c 2>/dev/null
+sleep 0.5
+tmux new -d -s $tmuxname
+echo "Executing updateOcamValuesInGUI in tmux session $tmuxname" 
+tmux send-keys -t $tmuxname "taskset -c 43 python $DAOROOT/bin/updateOcamValuesInGUI.py" C-M
+echo "Done starting $1 process."
+
+# Start camera acquisition
+sleep 1
+daoEkarusStartOcamAcqusition.py # create the SHM_OCAM_RAW_ACQ SHM to enable the ocam acquisition

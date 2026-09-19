@@ -1,0 +1,48 @@
+#! /usr/bin/env python
+import platform, os
+# additional_flags
+add_ld_flags = ['']
+add_c_flags  = ['']
+add_cxx_flags= ['']
+
+if platform.system() == "Darwin":
+    add_ld_flags += ['-L/opt/homebrew/lib']
+    add_cxx_flags += ['-std=c++17']
+    add_c_flags += ['-O3', '-ffast-math']
+    add_libpath_flags = [f"{os.getenv('DAOROOT')}/lib"]
+else:
+    add_ld_flags += ['-lrt', '-lnuma']
+    add_cxx_flags += ['']
+    add_c_flags += ['-Ofast']
+    add_libpath_flags = [f"{os.getenv('DAOROOT')}/lib", f"{os.getenv('DAOROOT')}/lib64"]
+
+
+if bld.options.debug_flag:
+    add_c_flags+=['-g']
+    add_cxx_flags+=['-g']
+    
+if bld.options.sanitizer_flag:
+    add_c_flags+=['-g', '-fsanitize=address']
+    add_cxx_flags+=['-g']
+    add_ld_flags+=['-fsanitize=address']
+    
+
+daoGigeReaderV2 = bld.program(
+	source = ['c/daoGigeReaderV2.c','c/daoGigeReader.c', 'c/time_rdtsc.c'],
+	target = 'daoGigeReaderV2',
+	includes = [ bld.env.PREFIX+'/include', "c"],
+	libpath = add_libpath_flags,
+	ldflags = ['-ldao', '-lm', '-pthread'] + add_ld_flags,
+	cflags = ['-Wall', '-Wextra', '-pipe', '-fdiagnostics-color', '-D_GNU_SOURCE'] + add_c_flags,
+	use = ['daoBase']
+	)
+
+daoGigeReaderV1 = bld.program(
+	source = ['c/daoGigeReaderV1.c','c/daoGigeReader.c', 'c/time_rdtsc.c'],
+	target = 'daoGigeReaderV1',
+	includes = [ bld.env.PREFIX+'/include', "c"],
+	libpath = add_libpath_flags,
+	ldflags = ['-ldao', '-lm', '-pthread'] + add_ld_flags,
+	cflags = ['-Wall', '-Wextra', '-pipe', '-fdiagnostics-color', '-D_GNU_SOURCE'] + add_c_flags,
+	use = ['daoBase']
+	)

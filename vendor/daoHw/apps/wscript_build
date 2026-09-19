@@ -1,0 +1,57 @@
+#! /usr/bin/env python
+import platform, os
+
+# additional_flags
+add_ld_flags = [""]
+add_cxx_flags = [""]
+add_lib_path = [""]
+
+if platform.system() == "Darwin":
+    add_ld_flags += ["-L/opt/homebrew/lib"]
+    add_cxx_flags += ["-std=c++17"]
+    add_include_path = ["../common/c", os.getenv("DAOROOT") + "/include/"]
+    add_lib_path = [os.getenv("DAOROOT") + "/lib"]
+else:
+    add_ld_flags += ["-lnuma", "-lrt"]
+    add_cxx_flags += ["-std=c++17", "-Wall", "-Wextra", "-pipe", "-fdiagnostics-color"]
+    add_include_path = [
+        "../common/c",
+        os.getenv("DAOROOT") + "/include/",
+        "/usr/include/glib-2.0",
+        "/usr/lib64/glib-2.0/include",
+        "/usr/lib/x86_64-linux-gnu/glib-2.0/include",
+    ]
+    add_lib_path = [os.getenv("DAOROOT") + "/lib", os.getenv("DAOROOT") + "/lib64/"]
+
+if bld.options.debug_flag:
+    add_cxx_flags += ["-g", "-O0", "-DDEBUG_"]
+else:
+    add_cxx_flags += ["-Ofast", "-DNDEBUG"]
+
+if bld.options.sanitizer_flag:
+    add_cxx_flags += ["-g", "-fsanitize=address"]
+
+if bld.env.HAVE_MUDPI:
+    daoMonitor = bld.program(
+        source="daoMonitor.cpp",
+        target="daoMonitor",
+        includes=add_include_path + ["../cisco/"],
+        libpath=add_lib_path,
+        ldflags=add_ld_flags
+        + [
+            "-ldaoNuma",
+            "-ldao",
+            "-lnuma",
+            "-ldaoProto",
+            "-lprotobuf",
+            "-lzmq",
+            "-lyaml-cpp",
+            f'-Wl,-rpath,{os.getenv("DAOROOT")}/lib64',
+        ],
+        cppflags=add_cxx_flags,
+        use=["daoBase"]
+    )
+else:
+    print("Skipping daoMonitor build (daoMudpi not available).")
+
+

@@ -1,0 +1,260 @@
+# Parameter-to-SHM mapping for daoEkarusServer
+#
+# Each entry maps an ICD parameter name (used in Get/Set commands) to:
+#   shm:         symbolic handle from daoEkarusShmNames.py
+#   description: human-readable label (optional)
+#   access:      read | write | readwrite
+
+parameters:
+
+  # ── OcaM camera ────────────────────────────────────────────────────────────
+  ocam.frame:
+    shm: SHM_OCAM_FRAME
+    description: OcaM processed frame
+    access: read
+
+  ocam.raw_frame:
+    shm: SHM_OCAM_RAW_FRAME
+    description: OcaM raw frame
+    access: read
+
+  ocam.background:
+    shm: SHM_OCAM_BACKGROUND
+    description: OcaM background
+    access: readwrite
+
+  ocam.flat_field:
+    shm: SHM_OCAM_FLAT_FIELD
+    description: OcaM flat-field
+    access: readwrite
+
+  ocam.reference:
+    shm: SHM_OCAM_REFERENCE
+    description: OcaM calibration reference
+    access: readwrite
+
+  ocam.dit:
+    shm: SHM_OCAM_DIT
+    description: OcaM detector integration time
+    access: readwrite
+
+  ocam.fps:
+    shm: SHM_OCAM_FPS
+    description: OcaM frames per second
+    access: readwrite
+
+  ocam.gain:
+    shm: SHM_OCAM_GAIN
+    description: OcaM gain
+    access: readwrite
+
+  ocam.temp:
+    shm: SHM_OCAM_TEMP
+    description: OcaM sensor temperature
+    access: read
+
+  ocam.cmd:
+    shm: SHM_OCAM_CMD
+    description: OcaM serial command
+    access: write
+
+  ocam.rsp:
+    shm: SHM_OCAM_RSP
+    description: OcaM serial response
+    access: read
+
+  ocam.descramble_time:
+    shm: SHM_OCAM_DESCRAMBLE_TIME
+    description: OcaM descramble timing
+    access: read
+
+  ocam.descramble_time_avg:
+    shm: SHM_OCAM_DESCRAMBLE_TIME_AVG
+    description: OcaM descramble timing (average)
+    access: read
+
+  ocam.descramble_time_rms:
+    shm: SHM_OCAM_DESCRAMBLE_TIME_RMS
+    description: OcaM descramble timing (RMS)
+    access: read
+
+  ocam.pupil_illumination:
+    shm: SHM_OCAM_PUPIL_ILLUMINATION
+    description: OcaM pupil illumination map
+    access: read
+
+  ocam.dark_map:
+    shm: SHM_OCAM_DARK_MAP
+    description: OcaM dark map
+    access: readwrite
+
+  ocam.dark_map_percent:
+    shm: SHM_OCAM_DARK_MAP_PERCENT
+    description: OcaM dark map percentage
+    access: readwrite
+
+  # ── CBlue camera ───────────────────────────────────────────────────────────
+  cblue.frame:
+    shm: SHM_CBLUE_FRAME
+    description: CBlue processed frame
+    access: read
+
+  cblue.background:
+    shm: SHM_CBLUE_BACKGROUND
+    description: CBlue background
+    access: readwrite
+
+  cblue.flat_field:
+    shm: SHM_CBLUE_FLAT_FIELD
+    description: CBlue flat-field
+    access: readwrite
+
+  cblue.reference:
+    shm: SHM_CBLUE_REFERENCE
+    description: CBlue calibration reference
+    access: readwrite
+
+  cblue.reference_sim:
+    shm: SHM_CBLUE_REFERENCE_SIM
+    description: CBlue simulated calibration reference
+    access: readwrite
+
+  cblue.conv_efficiency:
+    shm: SHM_CBLUE_CONV_EFFICIENCY
+    description: CBlue conversion efficiency
+    access: read
+
+  cblue.dit:
+    shm: SHM_CBLUE_DIT
+    description: CBlue detector integration time
+    access: readwrite
+
+  cblue.fps:
+    shm: SHM_CBLUE_FPS
+    description: CBlue frames per second
+    access: read
+
+  cblue.gain:
+    shm: SHM_CBLUE_GAIN
+    description: CBlue gain
+    access: readwrite
+
+  cblue.temp:
+    shm: SHM_CBLUE_TEMP
+    description: CBlue sensor temperature
+    access: read
+
+  cblue.og_cmd:
+    shm: SHM_CBLUE_OG_CMD
+    description: CBlue output gain command
+    access: write
+
+  # ── DM1 loop control ───────────────────────────────────────────────────────
+  dm1.loop.cmd:
+    shm: SHM_DM1_LOOP_CMD
+    description: DM1 loop command
+    access: readwrite
+
+  dm1.loop.leak:
+    shm: SHM_DM1_LOOP_LEAK
+    description: DM1 loop leak factor
+    access: readwrite
+
+  dm1.loop.gain:
+    shm: SHM_DM1_LOOP_GAIN
+    description: DM1 loop gain
+    access: readwrite
+
+  # ── DM1 commands & channels ────────────────────────────────────────────────
+  dm1.cmd:
+    shm: SHM_DM1_CMD
+    description: DM1 total command
+    access: readwrite
+
+  dm1.cmd_offset:
+    shm: SHM_DM1_CMD_OFFSET
+    description: DM1 command offset
+    access: readwrite
+
+  dm1.channel.0:
+    shm: SHM_DM1_CHANNEL_0
+    description: DM1 channel 0 (flat)
+    access: readwrite
+
+  dm1.channel.1:
+    shm: SHM_DM1_CHANNEL_1
+    description: DM1 channel 1
+    access: readwrite
+
+  dm1.channel.2:
+    shm: SHM_DM1_CHANNEL_2
+    description: DM1 channel 2
+    access: readwrite
+
+  dm1.channel.3:
+    shm: SHM_DM1_CHANNEL_3
+    description: DM1 channel 3
+    access: readwrite
+
+  # ── DM1 reconstruction ─────────────────────────────────────────────────────
+  dm1.modes2commands:
+    shm: SHM_DM1_MODES2COMMANDS
+    description: DM1 modes-to-commands matrix
+    access: readwrite
+
+  dm1.residual_wf:
+    shm: SHM_DM1_RESIDUAL_WF
+    description: DM1 residual wavefront
+    access: read
+
+  dm1.468_mask:
+    shm: SHM_DM1_468_MASK
+    description: DM1 468-actuator mask
+    access: read
+
+  wfs1.modes:
+    shm: SHM_WFS1_MODES
+    description: WFS1 mode coefficients
+    access: read
+
+  # ── General ────────────────────────────────────────────────────────────────
+  frame_id:
+    shm: SHM_FRAME_ID
+    description: Global frame counter
+    access: read
+
+  residual_wf_matrix:
+    shm: SHM_RESIDUAL_WF_MATRIX
+    description: Residual wavefront matrix
+    access: read
+
+  modulator:
+    shm: SHM_MODULATOR
+    description: Modulator
+    access: readwrite
+
+  fasttt:
+    shm: SHM_FASTTT
+    description: FastTT
+    access: readwrite
+
+  oopao.mode:
+    shm: SHM_OOPAO_MODE
+    description: OOPAO simulation mode
+    access: readwrite
+
+  # ── Atmosphere simulator ───────────────────────────────────────────────────
+  dm1.atm.stop:
+    shm: SHM_DM1_ATM_STOP
+    description: Atmosphere simulator stop flag
+    access: readwrite
+
+  dm1.atm.seeing:
+    shm: SHM_DM1_ATM_SEEING
+    description: Atmosphere simulator seeing (value x10)
+    access: readwrite
+
+  dm1.atm.windspeed:
+    shm: SHM_DM1_ATM_WINDSPEED
+    description: Atmosphere simulator wind speed (value x5/1000)
+    access: readwrite

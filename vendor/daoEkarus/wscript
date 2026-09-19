@@ -1,0 +1,160 @@
+#! /usr/bin/env python
+# encoding: utf-8
+# David Barr
+import os
+import glob
+
+# the following two variables are used by the target "waf dist"
+VERSION = "0.0.1"
+APPNAME = "daoEkarus"
+
+top = "."
+docs = 'docs'
+
+from waflib import Configure, Logs, Utils, Context
+
+
+def build_docs(conf):
+	os.system("doxygen docs/Doxyfile")
+	os.system(f"make -C {docs} html")
+
+def clean_docs(conf):
+	os.system(f"make -C {docs} clean")
+
+def options(opt):
+    opt.load("compiler_cxx gnu_dirs")
+
+
+def configure(conf):
+    conf.load("compiler_cxx gnu_dirs")
+    conf.write_config_header("config.h")
+    print("→ prefix is " + conf.options.prefix)
+    
+    conf.env.PYTHONDIR		= f'{conf.env.PREFIX}/python'
+    conf.env.DATADIR		= f'{conf.env.PREFIX}/data'
+    conf.env.CONFDIR		= f'{conf.env.PREFIX}/config'
+    
+def build(bld):
+    bld.env.DEFINES = ["WAF=1"]
+    bld.recurse("apps")
+    Logs.info("Building proto files...")
+    bld.recurse('proto')
+
+	# apps
+    files = glob.glob('apps/*.py')
+    for file in files:
+        bld.install_files(bld.env.BINDIR, file, chmod=0o0755, relative_trick=False)
+        
+    files = glob.glob('src/*.py') + glob.glob('src/python/*.py')
+    for file in files:
+        bld.install_files(bld.env.PYTHONDIR, file, relative_trick=False)
+    # gui
+    files = glob.glob('gui/*.ui')
+    for file in files:
+        bld.install_files(bld.env.DATADIR, file, relative_trick=False)
+    files = glob.glob('gui/*.py')
+    for file in files:
+        bld.install_files(bld.env.BINDIR, file, chmod=0o0755, relative_trick=False)
+    # script
+    files = glob.glob('scripts/*')
+    for file in files:
+        bld.install_files(bld.env.BINDIR, file, chmod=0o0755, relative_trick=False)
+    # logo
+    files = glob.glob('logo/*.png')
+    for file in files:
+        bld.install_files(bld.env.DATADIR, file, relative_trick=False)
+    # install header for proto files
+    header_files = glob.glob('build/*.h')
+    for file in header_files:
+        bld.install_files(bld.env.INCLUDEDIR, file, relative_trick=False)
+    # # install proto files
+    python_files = glob.glob('build/*.py')
+    for file in python_files:
+        bld.install_files(bld.env.PYTHONDIR, file, relative_trick=False)
+    # # install proto files
+    config_files = glob.glob('config/*.yaml')
+    for file in config_files:
+        bld.install_files(bld.env.CONFDIR, file, relative_trick=False)
+        
+    config_files = glob.glob('config/*.pvxml')
+    for file in config_files:
+        bld.install_files(bld.env.CONFDIR, file, relative_trick=False)
+
+def deploy_service(ctx):
+    """Install user systemd service(s), enable and start them, and enable linger."""
+    import subprocess
+    import shutil
+    import pwd
+
+    script_dir = ctx.path.abspath()
+    service_files = glob.glob(os.path.join(script_dir, 'service', '*.service'))
+
+    if not service_files:
+        Logs.error('No .service files found in service/')
+        ctx.fatal('Nothing to deploy.')
+
+    user_systemd_dir = os.path.expanduser('~/.config/systemd/user')
+    os.makedirs(user_systemd_dir, exist_ok=True)
+
+    # Stop any already-running instances (ignore errors if not running)
+    for sf in service_files:
+        name = os.path.basename(sf)
+        Logs.info(f'Stopping {name} (if running)...')
+        subprocess.run(['systemctl', '--user', 'stop', name], capture_output=True)
+
+    # Install service files
+    for sf in service_files:
+        name = os.path.basename(sf)
+        dest = os.path.join(user_systemd_dir, name)
+        Logs.info(f'Installing {name} → {dest}')
+        shutil.copy2(sf, dest)
+
+    # Reload the user daemon so it picks up the new/updated units
+    Logs.info('Running: systemctl --user daemon-reload')
+    ret = subprocess.run(['systemctl', '--user', 'daemon-reload'])
+    if ret.returncode != 0:
+        ctx.fatal('systemctl --user daemon-reload failed')
+
+    # Enable and immediately start each service
+    for sf in service_files:
+        name = os.path.basename(sf)
+        Logs.info(f'Enabling and starting {name}...')
+        ret = subprocess.run(['systemctl', '--user', 'enable', '--now', name])
+        if ret.returncode != 0:
+            # Print status output to help diagnose unit file problems
+            subprocess.run(['systemctl', '--user', 'status', name])
+            ctx.fatal(f'Failed to enable/start {name}')
+
+    # Enable linger so user services survive logout
+    username = pwd.getpwuid(os.getuid()).pw_name
+    Logs.info(f'Enabling linger for {username}...')
+    ret = subprocess.run(['loginctl', 'enable-linger', username])
+    if ret.returncode != 0:
+        ctx.fatal(f'loginctl enable-linger {username} failed')
+
+    Logs.info('Service deployment complete.')
+    
+def deploy_docs(ctx):
+    """Build the docs and copy them to the local web server deployment directory."""
+    import shutil
+    
+    # 1. Trigger the documentation build first
+    build_docs(ctx)
+    
+    # 2. Define our target deployment directory in your home folder
+    # This avoids permission issues with Nginx's default /var/www root
+    deploy_target = os.path.expanduser('~/www/daoEkarus-docs')
+    source_dir = os.path.join(ctx.path.abspath(), docs, 'build', 'html')
+    
+    Logs.info(f"Publishing documentation to {deploy_target}...")
+    
+    # Clean up old deployment if it exists to remove stale files
+    if os.path.exists(deploy_target):
+        shutil.rmtree(deploy_target)
+        
+    try:
+        shutil.copytree(source_dir, deploy_target)
+        Logs.info("Documentation successfully published!")
+        Logs.info(y:=f"Ensure Nginx is configured to point to: {deploy_target}")
+    except Exception as e:
+        ctx.fatal(f"Failed to copy documentation to web directory: {e}")

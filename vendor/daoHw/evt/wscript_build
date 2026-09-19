@@ -1,0 +1,57 @@
+#! /usr/bin/env python
+import platform, os
+
+add_ld_flags  = ['']
+add_c_flags   = ['']
+add_cxx_flags = ['']
+add_lib_path  = ['']
+
+EVT_ROOT = '/opt/EVT/eSDK'
+
+if platform.system() == "Darwin":
+    add_cxx_flags += ['-std=c++17']
+    add_c_flags   += ['-O3', '-ffast-math']
+    add_include_path = [
+        '../include',
+        os.getenv('DAOROOT') + '/include/',
+        f'{EVT_ROOT}/include',
+    ]
+    add_lib_path = [
+        os.getenv('DAOROOT') + '/lib',
+        f'{EVT_ROOT}/lib',
+    ]
+else:
+    add_ld_flags  += ['-lnuma', '-lrt']
+    add_cxx_flags += ['-std=c++11']
+    add_c_flags   += ['-Ofast']
+    add_include_path = [
+        '../include',
+        os.getenv('DAOROOT') + '/include/',
+        f'{EVT_ROOT}/include',
+    ]
+    add_lib_path = [
+        os.getenv('DAOROOT') + '/lib',
+        os.getenv('DAOROOT') + '/lib64/',
+        f'{EVT_ROOT}/lib',
+    ]
+
+if bld.options.debug_flag:
+    add_c_flags   += ['-g']
+    add_cxx_flags += ['-g']
+
+if bld.options.sanitizer_flag:
+    add_c_flags   += ['-g', '-fsanitize=address']
+    add_cxx_flags += ['-g']
+
+daoEvtCtrl = bld.program(
+    source   = 'daoEvtCtrl.C',
+    target   = 'daoEvtCtrl',
+    includes = add_include_path,
+    libpath  = add_lib_path,
+    ldflags  = add_ld_flags + [
+        '-ldao', '-ldaoTools', '-lpthread', '-lm',
+        '-lEmergentCamera', '-lEmergentGigEVision', '-lEmergentGenICam',
+    ],
+    cflags   = ['-Wall', '-Wextra', '-pipe', '-fdiagnostics-color'] + add_c_flags,
+    use      = ['daoBase'],
+)

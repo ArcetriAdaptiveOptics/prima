@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Define variables
+IP="192.168.60.66"
+# Ensure DAODATA is exported or defined in your environment
+FILE_PATH="${DAODATA}/config/iportOcam.pvxml"
+
+# Print the status
+echo "Updating firmware of camera: $IP with file $FILE_PATH"
+CMD="daoIportWriteConfig -ip $IP $FILE_PATH"
+echo "Executing: $CMD" 
+# Execute the command
+daoIportWriteConfig -ip "$IP" -file "$FILE_PATH"

@@ -1,0 +1,27 @@
+#!/bin/bash
+daoEkarusLaunchMessage
+echo "Starting Ekarus ORCA camera process..."
+datestr="$( date -u )"
+echo "$datestr"
+
+# CONTROL + ACQUISITION (single process: DCAM streamer)
+tmuxname="ORCA_CONTROL"
+cmd="daoOrcaCtrl.py -S /tmp/orca.im.shm"
+
+# Ctrl-C the running streamer and WAIT for it to finish its clean DCAM teardown
+# (dcamcap_stop / dcambuf_release / dcamdev_close / dcamapi_uninit). This can
+# take a few seconds; starting a new process before the USB interface is
+# released makes the new open() fail.
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+for _ in $(seq 1 30); do
+    pgrep -f 'daoOrcaCtrl\.py' > /dev/null || break
+    sleep 0.5
+done
+if pgrep -f 'daoOrcaCtrl\.py' > /dev/null; then
+    echo "WARNING: previous daoOrcaCtrl.py still running after 15s; starting anyway"
+fi
+
+echo "Executing $cmd in tmux session $tmuxname"
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting ORCA process."

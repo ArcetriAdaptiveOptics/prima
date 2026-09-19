@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry"><rect><x>0</x><y>0</y><width>900</width><height>650</height></rect></property>
+  <property name="windowTitle"><string>Mode PSD</string></property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <item>
+    <layout class="QHBoxLayout" name="topLayout">
+     <item><widget class="QLabel" name="modeLabel"><property name="text"><string>Mode:</string></property></widget></item>
+     <item><widget class="QSpinBox" name="modeBox"><property name="minimum"><number>0</number></property><property name="maximum"><number>467</number></property><property name="value"><number>0</number></property></widget></item>
+     <item><widget class="QLabel" name="modeListLabel"><property name="text"><string>Cumulative modes:</string></property></widget></item>
+     <item><widget class="QLineEdit" name="modeListEdit"><property name="placeholderText"><string>0-5,8</string></property></widget></item>
+     <item><widget class="QComboBox" name="plotModeCombo"><item><property name="text"><string>PSD</string></property></item><item><property name="text"><string>Cumulative PSD</string></property></item></widget></item>
+     <item><widget class="QCheckBox" name="showDmCumulative"><property name="text"><string>Show POL</string></property><property name="checked"><bool>false</bool></property></widget></item>
+     <item><widget class="QLabel" name="windowLabel"><property name="text"><string>Window:</string></property></widget></item>
+     <item><widget class="QComboBox" name="windowComboBox"><item><property name="text"><string>512</string></property></item><item><property name="text"><string>1024</string></property></item><item><property name="text"><string>2048</string></property></item><item><property name="text"><string>4096</string></property></item><item><property name="text"><string>8192</string></property></item></widget></item>
+    </layout>
+   </item>
+   <item><widget class="QWidget" name="plotView" native="true"><property name="sizePolicy"><sizepolicy hsizetype="Expanding" vsizetype="Expanding"><horstretch>0</horstretch><verstretch>1</verstretch></sizepolicy></property></widget></item>
+   <item><widget class="QLabel" name="statusLabel"><property name="text"><string>Waiting for data...</string></property></widget></item>
+  </layout>
+ </widget>
+ <resources/><connections/>
+</ui>

@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1100</width>
+    <height>723</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Calibration Display</string>
+  </property>
+  <widget class="QLabel" name="imageColumnLabel">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>12</y>
+     <width>110</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>IM column:</string>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="columnBox">
+   <property name="geometry">
+    <rect>
+     <x>130</x>
+     <y>10</y>
+     <width>90</width>
+     <height>28</height>
+    </rect>
+   </property>
+   <property name="minimum">
+    <number>1</number>
+   </property>
+   <property name="maximum">
+    <number>1</number>
+   </property>
+   <property name="value">
+    <number>1</number>
+   </property>
+  </widget>
+  <widget class="QLabel" name="modeCountLabel">
+   <property name="geometry">
+    <rect>
+     <x>740</x>
+     <y>12</y>
+     <width>155</width>
+     <height>24</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Reconstructed modes:</string>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="modeBox">
+   <property name="geometry">
+    <rect>
+     <x>900</x>
+     <y>10</y>
+     <width>90</width>
+     <height>28</height>
+    </rect>
+   </property>
+   <property name="minimum">
+    <number>1</number>
+   </property>
+   <property name="maximum">
+    <number>1</number>
+   </property>
+   <property name="value">
+    <number>1</number>
+   </property>
+  </widget>
+  <widget class="QWidget" name="imView" native="true">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>90</y>
+     <width>530</width>
+     <height>501</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QWidget" name="noiseView" native="true">
+   <property name="geometry">
+    <rect>
+     <x>560</x>
+     <y>140</y>
+     <width>530</width>
+     <height>441</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLabel" name="currentIMLabel">
+   <property name="geometry">
+    <rect>
+     <x>220</x>
+     <y>675</y>
+     <width>850</width>
+     <height>28</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Current IM:</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="selectIMButton">
+   <property name="geometry">
+    <rect>
+     <x>20</x>
+     <y>675</y>
+     <width>180</width>
+     <height>28</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Select interaction matrix</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="conditionLabel">
+   <property name="geometry">
+    <rect>
+   <x>650</x>
+     <y>600</y>
+   <width>200</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Condition # (full frame):</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="conditionLabelValue">
+   <property name="geometry">
+    <rect>
+   <x>860</x>
+     <y>600</y>
+     <width>121</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string/>
+   </property>
+  </widget>
+    <widget class="QLabel" name="validConditionLabel">
+     <property name="geometry">
+        <rect>
+         <x>650</x>
+         <y>635</y>
+         <width>200</width>
+         <height>31</height>
+        </rect>
+     </property>
+     <property name="text">
+        <string>Condition # (valid pixels):</string>
+     </property>
+    </widget>
+    <widget class="QLabel" name="validConditionLabelValue">
+     <property name="geometry">
+        <rect>
+         <x>860</x>
+         <y>635</y>
+         <width>121</width>
+         <height>31</height>
+        </rect>
+     </property>
+     <property name="text">
+        <string/>
+     </property>
+    </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

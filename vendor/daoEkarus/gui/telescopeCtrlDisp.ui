@@ -1,0 +1,371 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>400</width>
+    <height>792</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Telescope Control Display</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">QMainWindow, QWidget {
+    background-color: #0b1740;
+    color: #e8eef7;
+}
+
+QLabel { color: #e8eef7; }
+
+QPushButton {
+    background-color: rgba(24, 72, 120, 0.55);
+    color: #eaf6f2;
+    border: 1px solid #30c0a8;
+    border-radius: 4px;
+    padding: 3px 6px;
+}
+QPushButton:hover   { background-color: rgba(48, 192, 168, 0.30); }
+QPushButton:pressed { background-color: rgba(48, 192, 168, 0.50); }
+QPushButton:checked { background-color: rgba(48, 192, 168, 0.55);
+                      border: 1px solid #30c0a8; }
+
+QDoubleSpinBox, QComboBox {
+    background-color: rgba(5, 12, 34, 0.6);
+    color: #e8eef7;
+    border: 1px solid #1860a8;
+}
+
+QGroupBox {
+    border: 1px solid #30c0a8;
+    border-radius: 6px;
+    margin-top: 10px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 12px;
+    padding: 0 5px;
+    color: #7fe0d0;
+    font-weight: bold;
+}
+</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+
+   <widget class="QLabel" name="titleLabel">
+    <property name="geometry"><rect><x>10</x><y>8</y><width>380</width><height>20</height></rect></property>
+    <property name="text"><string>Telescope Control Display</string></property>
+    <property name="alignment"><set>Qt::AlignCenter</set></property>
+   </widget>
+
+   <!-- ================= Telescope status ================= -->
+   <widget class="QLabel" name="telemTitleLabel">
+    <property name="geometry"><rect><x>15</x><y>32</y><width>370</width><height>16</height></rect></property>
+    <property name="text"><string>Telescope status</string></property>
+   </widget>
+
+   <widget class="QLabel" name="raNameLabel">
+    <property name="geometry"><rect><x>20</x><y>52</y><width>80</width><height>18</height></rect></property>
+    <property name="text"><string>RA  [deg]</string></property>
+   </widget>
+   <widget class="QLabel" name="raValueLabel">
+    <property name="geometry"><rect><x>105</x><y>52</y><width>95</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+   <widget class="QLabel" name="decNameLabel">
+    <property name="geometry"><rect><x>20</x><y>72</y><width>80</width><height>18</height></rect></property>
+    <property name="text"><string>Dec [deg]</string></property>
+   </widget>
+   <widget class="QLabel" name="decValueLabel">
+    <property name="geometry"><rect><x>105</x><y>72</y><width>95</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+   <widget class="QLabel" name="altNameLabel">
+    <property name="geometry"><rect><x>20</x><y>92</y><width>80</width><height>18</height></rect></property>
+    <property name="text"><string>Alt [deg]</string></property>
+   </widget>
+   <widget class="QLabel" name="altValueLabel">
+    <property name="geometry"><rect><x>105</x><y>92</y><width>95</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+   <widget class="QLabel" name="azNameLabel">
+    <property name="geometry"><rect><x>20</x><y>112</y><width>80</width><height>18</height></rect></property>
+    <property name="text"><string>Az  [deg]</string></property>
+   </widget>
+   <widget class="QLabel" name="azValueLabel">
+    <property name="geometry"><rect><x>105</x><y>112</y><width>95</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+   <widget class="QLabel" name="haNameLabel">
+    <property name="geometry"><rect><x>20</x><y>132</y><width>80</width><height>18</height></rect></property>
+    <property name="text"><string>HA  [deg]</string></property>
+   </widget>
+   <widget class="QLabel" name="haValueLabel">
+    <property name="geometry"><rect><x>105</x><y>132</y><width>95</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+
+   <widget class="QLabel" name="trackingNameLabel">
+    <property name="geometry"><rect><x>210</x><y>52</y><width>95</width><height>18</height></rect></property>
+    <property name="text"><string>Tracking</string></property>
+   </widget>
+   <widget class="QLabel" name="trackingValueLabel">
+    <property name="geometry"><rect><x>305</x><y>52</y><width>80</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+   <widget class="QLabel" name="slewingNameLabel">
+    <property name="geometry"><rect><x>210</x><y>72</y><width>95</width><height>18</height></rect></property>
+    <property name="text"><string>Slewing</string></property>
+   </widget>
+   <widget class="QLabel" name="slewingValueLabel">
+    <property name="geometry"><rect><x>305</x><y>72</y><width>80</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+   <widget class="QLabel" name="powerNameLabel">
+    <property name="geometry"><rect><x>210</x><y>92</y><width>95</width><height>18</height></rect></property>
+    <property name="text"><string>Power</string></property>
+   </widget>
+   <widget class="QLabel" name="powerValueLabel">
+    <property name="geometry"><rect><x>305</x><y>92</y><width>80</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+   <widget class="QLabel" name="limitsNameLabel">
+    <property name="geometry"><rect><x>210</x><y>112</y><width>95</width><height>18</height></rect></property>
+    <property name="text"><string>Limits</string></property>
+   </widget>
+   <widget class="QLabel" name="limitsValueLabel">
+    <property name="geometry"><rect><x>305</x><y>112</y><width>80</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+   <widget class="QLabel" name="airmassNameLabel">
+    <property name="geometry"><rect><x>210</x><y>132</y><width>95</width><height>18</height></rect></property>
+    <property name="text"><string>Airmass</string></property>
+   </widget>
+   <widget class="QLabel" name="airmassValueLabel">
+    <property name="geometry"><rect><x>305</x><y>132</y><width>80</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+   <widget class="QLabel" name="focusNameLabel">
+    <property name="geometry"><rect><x>210</x><y>152</y><width>95</width><height>18</height></rect></property>
+    <property name="text"><string>Focus M2 [mm]</string></property>
+   </widget>
+   <widget class="QLabel" name="focusValueLabel">
+    <property name="geometry"><rect><x>305</x><y>152</y><width>80</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+   <widget class="QLabel" name="domeNameLabel">
+    <property name="geometry"><rect><x>210</x><y>172</y><width>95</width><height>18</height></rect></property>
+    <property name="text"><string>Dome</string></property>
+   </widget>
+   <widget class="QLabel" name="domeValueLabel">
+    <property name="geometry"><rect><x>305</x><y>172</y><width>80</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+
+   <widget class="QLabel" name="telemetryStatusLabel">
+    <property name="geometry"><rect><x>20</x><y>196</y><width>360</width><height>16</height></rect></property>
+    <property name="text"><string>telemetry: --</string></property>
+   </widget>
+
+   <!-- ================= Offload conversion ================= -->
+   <widget class="QLabel" name="offloadTitleLabel">
+    <property name="geometry"><rect><x>15</x><y>222</y><width>260</width><height>16</height></rect></property>
+    <property name="text"><string>Fast-TT offload conversion</string></property>
+   </widget>
+   <widget class="QPushButton" name="openCompassButton">
+    <property name="geometry"><rect><x>270</x><y>219</y><width>110</width><height>21</height></rect></property>
+    <property name="text"><string>Open compass</string></property>
+   </widget>
+
+   <widget class="QLabel" name="theta0NameLabel">
+    <property name="geometry"><rect><x>20</x><y>244</y><width>85</width><height>18</height></rect></property>
+    <property name="text"><string>theta0 [deg]</string></property>
+   </widget>
+   <widget class="QLabel" name="theta0ValueLabel">
+    <property name="geometry"><rect><x>108</x><y>244</y><width>75</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+   <widget class="QLabel" name="thetaNameLabel">
+    <property name="geometry"><rect><x>200</x><y>244</y><width>65</width><height>18</height></rect></property>
+    <property name="text"><string>theta [deg]</string></property>
+   </widget>
+   <widget class="QLabel" name="thetaValueLabel">
+    <property name="geometry"><rect><x>270</x><y>244</y><width>115</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+
+   <widget class="QLabel" name="sxNameLabel">
+    <property name="geometry"><rect><x>20</x><y>264</y><width>25</width><height>18</height></rect></property>
+    <property name="text"><string>Sx</string></property>
+   </widget>
+   <widget class="QLabel" name="sxValueLabel">
+    <property name="geometry"><rect><x>48</x><y>264</y><width>60</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+   <widget class="QLabel" name="syNameLabel">
+    <property name="geometry"><rect><x>120</x><y>264</y><width>25</width><height>18</height></rect></property>
+    <property name="text"><string>Sy</string></property>
+   </widget>
+   <widget class="QLabel" name="syValueLabel">
+    <property name="geometry"><rect><x>148</x><y>264</y><width>60</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+
+   <widget class="QLabel" name="offloadNameLabel">
+    <property name="geometry"><rect><x>20</x><y>284</y><width>180</width><height>18</height></rect></property>
+    <property name="text"><string>TT offload [dRA, dDec] arcsec</string></property>
+   </widget>
+   <widget class="QLabel" name="offloadValueLabel">
+    <property name="geometry"><rect><x>205</x><y>284</y><width>180</width><height>18</height></rect></property>
+    <property name="text"><string>--</string></property>
+   </widget>
+
+   <widget class="QPushButton" name="controlEnableButton">
+    <property name="geometry"><rect><x>20</x><y>306</y><width>360</width><height>26</height></rect></property>
+    <property name="checkable"><bool>true</bool></property>
+    <property name="text"><string>TELESCOPE CONTROL: DISABLED</string></property>
+   </widget>
+   <widget class="QPushButton" name="offloadEnableButton">
+    <property name="geometry"><rect><x>20</x><y>334</y><width>360</width><height>26</height></rect></property>
+    <property name="checkable"><bool>true</bool></property>
+    <property name="text"><string>AUTO OFFLOAD: INACTIVE</string></property>
+   </widget>
+
+   <widget class="QLabel" name="offPeriodNameLabel">
+    <property name="geometry"><rect><x>20</x><y>366</y><width>62</width><height>20</height></rect></property>
+    <property name="text"><string>Period [s]</string></property>
+   </widget>
+   <widget class="QDoubleSpinBox" name="offPeriodSpinBox">
+    <property name="geometry"><rect><x>84</x><y>366</y><width>58</width><height>20</height></rect></property>
+    <property name="decimals"><number>1</number></property>
+    <property name="minimum"><double>1.000000000000000</double></property>
+    <property name="maximum"><double>3600.000000000000000</double></property>
+    <property name="singleStep"><double>5.000000000000000</double></property>
+    <property name="value"><double>20.000000000000000</double></property>
+   </widget>
+   <widget class="QLabel" name="offGainNameLabel">
+    <property name="geometry"><rect><x>156</x><y>366</y><width>36</width><height>20</height></rect></property>
+    <property name="text"><string>Gain</string></property>
+   </widget>
+   <widget class="QDoubleSpinBox" name="offGainSpinBox">
+    <property name="geometry"><rect><x>194</x><y>366</y><width>58</width><height>20</height></rect></property>
+    <property name="decimals"><number>2</number></property>
+    <property name="minimum"><double>0.000000000000000</double></property>
+    <property name="maximum"><double>2.000000000000000</double></property>
+    <property name="singleStep"><double>0.050000000000000</double></property>
+    <property name="value"><double>0.500000000000000</double></property>
+   </widget>
+   <widget class="QLabel" name="offloadStatusLabel">
+    <property name="geometry"><rect><x>20</x><y>388</y><width>360</width><height>16</height></rect></property>
+    <property name="text"><string>auto offload: inactive</string></property>
+   </widget>
+
+   <!-- ================= Guiding hand paddle ================= -->
+   <widget class="QGroupBox" name="guidingBox">
+    <property name="geometry"><rect><x>8</x><y>414</y><width>384</width><height>158</height></rect></property>
+    <property name="title"><string>Guiding   &#8594;   telGuiding</string></property>
+
+    <widget class="QLabel" name="stepNameLabel">
+     <property name="geometry"><rect><x>12</x><y>24</y><width>95</width><height>22</height></rect></property>
+     <property name="text"><string>Step [arcsec]</string></property>
+    </widget>
+    <widget class="QDoubleSpinBox" name="stepSpinBox">
+     <property name="geometry"><rect><x>110</x><y>24</y><width>80</width><height>22</height></rect></property>
+     <property name="decimals"><number>2</number></property>
+     <property name="minimum"><double>0.010000000000000</double></property>
+     <property name="maximum"><double>3600.000000000000000</double></property>
+     <property name="singleStep"><double>0.500000000000000</double></property>
+     <property name="value"><double>1.000000000000000</double></property>
+    </widget>
+    <widget class="QLabel" name="guidingTotalLabel">
+     <property name="geometry"><rect><x>198</x><y>24</y><width>178</width><height>22</height></rect></property>
+     <property name="text"><string>&#931;  RA +0.00  Dec +0.00</string></property>
+     <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
+    </widget>
+
+    <widget class="QPushButton" name="btn_decP">
+     <property name="geometry"><rect><x>152</x><y>52</y><width>80</width><height>28</height></rect></property>
+     <property name="text"><string>+Dec  &#9650;</string></property>
+    </widget>
+    <widget class="QPushButton" name="btn_raM">
+     <property name="geometry"><rect><x>66</x><y>84</y><width>80</width><height>28</height></rect></property>
+     <property name="text"><string>&#9664;  -RA</string></property>
+    </widget>
+    <widget class="QPushButton" name="btn_zero">
+     <property name="geometry"><rect><x>152</x><y>84</y><width>80</width><height>28</height></rect></property>
+     <property name="text"><string>0</string></property>
+    </widget>
+    <widget class="QPushButton" name="btn_raP">
+     <property name="geometry"><rect><x>238</x><y>84</y><width>80</width><height>28</height></rect></property>
+     <property name="text"><string>+RA  &#9654;</string></property>
+    </widget>
+    <widget class="QPushButton" name="btn_decM">
+     <property name="geometry"><rect><x>152</x><y>116</y><width>80</width><height>28</height></rect></property>
+     <property name="text"><string>-Dec  &#9660;</string></property>
+    </widget>
+   </widget>
+
+   <!-- ================= Telescope offset hand paddle ================= -->
+   <widget class="QGroupBox" name="offsetBox">
+    <property name="geometry"><rect><x>8</x><y>580</y><width>384</width><height>158</height></rect></property>
+    <property name="title"><string>Telescope offset   &#8594;   telOffset</string></property>
+
+    <widget class="QLabel" name="offStepNameLabel">
+     <property name="geometry"><rect><x>12</x><y>24</y><width>95</width><height>22</height></rect></property>
+     <property name="text"><string>Step [arcsec]</string></property>
+    </widget>
+    <widget class="QDoubleSpinBox" name="offStepSpinBox">
+     <property name="geometry"><rect><x>110</x><y>24</y><width>80</width><height>22</height></rect></property>
+     <property name="decimals"><number>2</number></property>
+     <property name="minimum"><double>0.010000000000000</double></property>
+     <property name="maximum"><double>3600.000000000000000</double></property>
+     <property name="singleStep"><double>1.000000000000000</double></property>
+     <property name="value"><double>5.000000000000000</double></property>
+    </widget>
+    <widget class="QLabel" name="offsetSlewLabel">
+     <property name="geometry"><rect><x>198</x><y>24</y><width>178</width><height>22</height></rect></property>
+     <property name="text"><string/></property>
+     <property name="alignment"><set>Qt::AlignRight|Qt::AlignVCenter</set></property>
+    </widget>
+
+    <widget class="QPushButton" name="btn_off_decP">
+     <property name="geometry"><rect><x>152</x><y>52</y><width>80</width><height>28</height></rect></property>
+     <property name="text"><string>+Dec  &#9650;</string></property>
+    </widget>
+    <widget class="QPushButton" name="btn_off_raM">
+     <property name="geometry"><rect><x>66</x><y>84</y><width>80</width><height>28</height></rect></property>
+     <property name="text"><string>&#9664;  -RA</string></property>
+    </widget>
+    <widget class="QPushButton" name="btn_off_zero">
+     <property name="geometry"><rect><x>152</x><y>84</y><width>80</width><height>28</height></rect></property>
+     <property name="text"><string>0</string></property>
+    </widget>
+    <widget class="QPushButton" name="btn_off_raP">
+     <property name="geometry"><rect><x>238</x><y>84</y><width>80</width><height>28</height></rect></property>
+     <property name="text"><string>+RA  &#9654;</string></property>
+    </widget>
+    <widget class="QPushButton" name="btn_off_decM">
+     <property name="geometry"><rect><x>152</x><y>116</y><width>80</width><height>28</height></rect></property>
+     <property name="text"><string>-Dec  &#9660;</string></property>
+    </widget>
+   </widget>
+
+   <!-- ================= log (both paddles) ================= -->
+   <widget class="QLabel" name="lastSentLabel">
+    <property name="geometry"><rect><x>20</x><y>748</y><width>360</width><height>16</height></rect></property>
+    <property name="text"><string>last sent: --</string></property>
+   </widget>
+   <widget class="QLabel" name="shmLabel">
+    <property name="geometry"><rect><x>20</x><y>766</y><width>360</width><height>16</height></rect></property>
+    <property name="text"><string>shm: --</string></property>
+   </widget>
+
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

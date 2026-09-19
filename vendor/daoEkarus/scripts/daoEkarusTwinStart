@@ -1,0 +1,63 @@
+#!/bin/bash
+
+daoEkarusLaunchMessage
+
+daoEkarusCleanup
+
+daoEkarusCreateShm.py
+sleep 2
+
+# START Integrator
+tmuxname="LP_INTEGRATOR"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+sleep 0.5
+echo "Executing standard daoLeakyIntegrator in tmux session $tmuxname"
+cmd="taskset -c 43-47 daoLeakyIntegrator -c 1.0 -S /tmp/dm1resWf.im.shm /tmp/dm1CmdOffset.im.shm /tmp/dm1Cmd01.im.shm /tmp/dm1_lpCmd.im.shm /tmp/dm1_lpGain.im.shm /tmp/dm1_lpLeak.im.shm -L"
+setModalLoopGain.py 0.6
+setModalLoopLeak.py 0.99
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $tmuxname process."
+
+# START combiner
+tmuxname="DM_COMBINER"
+tmux send-keys -t $tmuxname C-c 2> /dev/null
+cmd="taskset -c 43-47 daoShmCombiner -m 1 -S /tmp/dm1Cmd.im.shm 4 -L"
+sleep 0.5
+echo "Executing $cmd in tmux session $tmuxname" 
+tmux new -d -s $tmuxname
+tmux send-keys -t $tmuxname "$cmd" C-M
+echo "Done starting $1 process."
+
+
+
+# daoEkarusPipeline
+
+
+
+tmuxname="EKARUSTWIN_LOOP"
+tmux send-keys -t $tmuxname C-c 2>/dev/null
+sleep 0.5
+tmux new -d -s $tmuxname
+echo "Executing updateOcamValuesInGUI in tmux session $tmuxname" 
+tmux send-keys -t $tmuxname "taskset -c 6-11 DAO_ekatwin.py" C-M
+echo "Done starting $1 process."
+
+sleep 0.5
+daoEkarusStartPyramidPipeline
+
+sleep 2
+
+taskset -c 24,30 EkarusCtrl.py &
+
+sleep 0.5
+
+tmuxname="PSF_LOOP"
+tmux send-keys -t $tmuxname C-c 2>/dev/null
+sleep 0.5
+tmux new -d -s $tmuxname
+echo "Executing updateOcamValuesInGUI in tmux session $tmuxname" 
+tmux send-keys -t $tmuxname "cd /home/daouser/scetre" C-M
+sleep 0.5
+tmux send-keys -t $tmuxname "taskset -c 17 python daoHwCamCtrlSR.py -s /tmp/oopao_cred2.im.shm" C-M
+echo "Done starting $1 process."
