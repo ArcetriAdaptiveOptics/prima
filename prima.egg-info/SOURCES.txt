@@ -1,0 +1,15 @@
+README.md
+setup.py
+prima/__init__.py
+prima/process_manager.py
+prima.egg-info/PKG-INFO
+prima.egg-info/SOURCES.txt
+prima.egg-info/dependency_links.txt
+prima.egg-info/entry_points.txt
+prima.egg-info/requires.txt
+prima.egg-info/top_level.txt
+prima/demo/__init__.py
+prima/demo/backends.py
+prima/gui/__init__.py
+prima/gui/app.py
+prima/gui/main_window.py

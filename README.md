@@ -74,6 +74,8 @@ m.setRadiusInMilliRad(2.0)
 - **Drop 2:** DM + dao closed-loop GUI.
 - **Drop 3:** Second focal-plane camera; modulator as fast TT; dao TT loop.
 
+## Vendor references (DO NOT MODIFY)
+
 | Path | Role |
 |------|------|
 | `vendor/daoEkarus` | **Primary reference** for daoPrima — later |
