@@ -65,16 +65,28 @@ m.setRadiusInMilliRad(2.0)
 
 ```bash
 source ~/git/.venv-prima/bin/activate
+pip install -e ~/git/prima
 prima-gui                 # interactive (needs display / Qt)
-# offscreen screenshots:
+# offscreen:
 QT_QPA_PLATFORM=offscreen prima-gui --screenshot media/drop1-main-gui.png
+QT_QPA_PLATFORM=offscreen prima-gui --screenshot-measure media/drop1-measure.png
+python scripts/smoke_drop1_metrology.py
 ```
 
-Panels: start/stop plico servers · live WFS frame · exposure vs FPS vs \(1/f_\mathrm{mod}\) · modulator · beat-sync tool.
+Panels (Prisma-shaped):
 
-Screenshots for review: `media/drop1-*.png`.
+- Start/stop plico servers · **Connect live** / Use demo
+- Isoscale WFS frame + pupil overlays · Find pupils
+- Exposure vs FPS vs \(1/f_\mathrm{mod}\) · lock \(t_\mathrm{exp}=1/f\)
+- Modulator + **gain presets** (0…40 mrad)
+- **Take Measure** / Once · Auto Align · masks · remove tip/tilt/focus/astig
+- Slopes / wavefront / pupil canvases · Zernike table · sync popup
 
-## Lab IPs (confirmed; connections not yet smoke-tested)
+Lab bring-up: power hardware → conf IPs → Start (lab) → Connect live → Find pupils → Take Measure.
+
+Screenshots: `media/drop1-*.png`.
+
+## Lab IPs (confirmed; connections not yet smoke-tested on this laptop)
 
 | Device | IP |
 |--------|-----|
@@ -83,7 +95,7 @@ Screenshots for review: `media/drop1-*.png`.
 
 ## Product drops
 
-- **Drop 1:** Prisma-like main GUI + PWFS absolute metrology (this conf set). See Project Prima `docs/drop-roadmap.md`.
+- **Drop 1:** Prisma-like main GUI + PWFS absolute metrology (`prima.metrology` + `prima-gui`).
 - **Drop 2:** DM + dao closed-loop GUI.
 - **Drop 3:** Second focal-plane camera; modulator as fast TT; dao TT loop.
 
