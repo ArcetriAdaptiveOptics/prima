@@ -61,7 +61,18 @@ m = plico_dm.simulated_modulator()
 m.setRadiusInMilliRad(2.0)
 ```
 
-## Vendor references (DO NOT MODIFY)
+## Lab IPs (confirmed; connections not yet smoke-tested)
+
+| Device | IP |
+|--------|-----|
+| Manta G-419 | `192.168.30.189` |
+| E-518.I3 | `192.168.30.190` |
+
+## Product drops
+
+- **Drop 1:** Prisma-like main GUI + PWFS absolute metrology (this conf set). See Project Prima `docs/drop-roadmap.md`.
+- **Drop 2:** DM + dao closed-loop GUI.
+- **Drop 3:** Second focal-plane camera; modulator as fast TT; dao TT loop.
 
 | Path | Role |
 |------|------|
