@@ -61,6 +61,19 @@ m = plico_dm.simulated_modulator()
 m.setRadiusInMilliRad(2.0)
 ```
 
+## Drop 1 main GUI
+
+```bash
+source ~/git/.venv-prima/bin/activate
+prima-gui                 # interactive (needs display / Qt)
+# offscreen screenshots:
+QT_QPA_PLATFORM=offscreen prima-gui --screenshot media/drop1-main-gui.png
+```
+
+Panels: start/stop plico servers · live WFS frame · exposure vs FPS vs \(1/f_\mathrm{mod}\) · modulator · beat-sync tool.
+
+Screenshots for review: `media/drop1-*.png`.
+
 ## Lab IPs (confirmed; connections not yet smoke-tested)
 
 | Device | IP |
