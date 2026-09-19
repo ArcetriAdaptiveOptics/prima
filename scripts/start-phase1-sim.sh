@@ -18,19 +18,9 @@ fi
 echo "Camera conf:    $CAM_CONF"
 echo "Modulator conf: $MOD_CONF"
 
-# Prefer PATH entry points from editable installs
-if command -v pysilico_server >/dev/null 2>&1; then
-  pysilico_server "$CAM_CONF" camera1 &
-else
-  python -m pysilico_server.camera_controller.runner "$CAM_CONF" camera1 &
-fi
+pysilico_server "$CAM_CONF" camera1 &
 CAM_PID=$!
-
-if command -v plico_dm_server >/dev/null 2>&1; then
-  plico_dm_server "$MOD_CONF" modulator1 &
-else
-  python -m plico_dm_server.controller.plico_dm_run_controller "$MOD_CONF" modulator1 &
-fi
+plico_dm_server "$MOD_CONF" modulator1 &
 MOD_PID=$!
 
 echo "Started camera PID=$CAM_PID  modulator PID=$MOD_PID"
