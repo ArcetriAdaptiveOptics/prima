@@ -1,4 +1,4 @@
-"""Start/stop helpers for Drop 1 plico processes (sim or lab conf)."""
+"""Start/stop helpers for Drop 1 / Drop 2 plico processes (sim or lab conf)."""
 import os
 import signal
 import subprocess
@@ -6,26 +6,31 @@ import time
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class ProcessManager:
-    def __init__(self, profile='sim', root=None):
+    def __init__(self, profile='sim', root=None, include_dm=False):
         self.root = Path(root) if root else ROOT
         self.profile = profile
+        self.include_dm = include_dm
         self._procs = {}
         self._log_handles = []
 
     def _confs(self):
         if self.profile == 'lab':
-            return (
-                self.root / 'conf' / 'camera-manta-g419.conf',
-                self.root / 'conf' / 'modulator-lab-e518.conf',
-            )
-        return (
-            self.root / 'conf' / 'camera-sim.conf',
-            self.root / 'conf' / 'modulator-sim.conf',
-        )
+            cam = self.root / 'conf' / 'camera-manta-g419.conf'
+            mod = self.root / 'conf' / 'modulator-lab-e518.conf'
+            dm = self.root / 'conf' / 'dm-bmc-lab.conf'
+        elif self.profile == 'alvium':
+            cam = self.root / 'conf' / 'camera-alvium-g1.conf'
+            mod = self.root / 'conf' / 'modulator-lab-e518.conf'
+            dm = self.root / 'conf' / 'dm-bmc-lab.conf'
+        else:
+            cam = self.root / 'conf' / 'camera-sim.conf'
+            mod = self.root / 'conf' / 'modulator-sim.conf'
+            dm = self.root / 'conf' / 'dm-bmc-sim.conf'
+        return cam, mod, dm
 
     def status(self):
         out = {}
@@ -37,7 +42,7 @@ class ProcessManager:
         return out
 
     def start(self):
-        cam_conf, mod_conf = self._confs()
+        cam_conf, mod_conf, dm_conf = self._confs()
         log_dir = self.root / 'tmp' / 'gui-logs'
         log_dir.mkdir(parents=True, exist_ok=True)
         self.stop()
@@ -51,6 +56,12 @@ class ProcessManager:
         self._procs['modulator'] = subprocess.Popen(
             ['plico_dm_server', str(mod_conf), 'modulator1'],
             stdout=mod_log, stderr=subprocess.STDOUT, env=env)
+        if self.include_dm:
+            dm_log = open(log_dir / 'dm.out', 'ab')
+            self._log_handles.append(dm_log)
+            self._procs['dm'] = subprocess.Popen(
+                ['plico_dm_server', str(dm_conf), 'dmBmc'],
+                stdout=dm_log, stderr=subprocess.STDOUT, env=env)
         time.sleep(0.5)
         return self.status()
 

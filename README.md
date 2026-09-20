@@ -1,116 +1,77 @@
 # Prima
 
-New Arcetri AO packaging/glue project (not a fork of prisma). Working name for the
-later DAO-oriented slice: **daoPrima** (deferred).
+New Arcetri AO packaging/glue project (not a fork of prisma).
 
-## Phase 1 focus
+| Slice | Role |
+|-------|------|
+| **`prima`** | Drop 1 PWFS metrology on the **plico** stack |
+| **`daoprima`** | Drop 2+ AO loop scaffold — daoEkarus-shaped SHM/GUI, plico I/O |
 
-Device plane only: **PWFS modulator** (PI S-334 @ E-518) + **WFS camera** (Manta G-419).
-No filter wheel, no science DM, no DAO bridges.
+## Hardware (bench)
 
-Modulator API lives in upstream **`plico_dm` / `plico_dm_server`** (revived
-`PIS334Modulator` + `ModulatorClient`) — **not** `piTipTilt` / `set_shape`.
+| Role | Device | Path |
+|------|--------|------|
+| WFS camera | Allied Vision **Manta G-419** (`192.168.30.189`) | pysilico `model=avt` |
+| WFS camera (alt) | Allied Vision **Alvium G1** | same `avt` path — conf `camera-alvium-g1.conf`; Drop 1 swap or Drop 3 FP |
+| PWFS modulator | PI **S-334** @ E-518 (`192.168.30.190`) | `plico_dm` `piS334Modulator` |
+| Science DM | BMC **Multi-DM 5.5 µm** (140 act, USB) | `plico_dm_server` `bmc` / `bmcMultiDM` |
+| Tip-tilt | S-334 | Drop 2 modulator; Drop 3 TT DM + FP camera |
 
-## Conf (this repo)
+## Conf
 
 | File | Role |
 |------|------|
-| `conf/modulator-sim.conf` | `simulatedModulator` on port 7030 |
-| `conf/modulator-lab-e518.conf` | `piS334Modulator` → E-518 IP / S-334 serial |
-| `conf/camera-sim.conf` | Simulated pyramid WFS (pysilico) |
-| `conf/camera-manta-g419.conf` | `model=avt` Manta G-419 |
+| `conf/modulator-sim.conf` / `modulator-lab-e518.conf` | PWFS modulator |
+| `conf/camera-sim.conf` / `camera-manta-g419.conf` / `camera-alvium-g1.conf` | WFS GigE cameras |
+| `conf/dm-bmc-sim.conf` / `dm-bmc-lab.conf` | BMC Multi-DM 140-act |
 
-## Start (laptop sim)
-
-```bash
-# editable installs (example)
-source ~/git/.venv-prima/bin/activate   # or your lab env
-chmod +x scripts/start-phase1-sim.sh
-./scripts/start-phase1-sim.sh
-```
-
-Lab hardware:
-
-```bash
-PROFILE=lab ./scripts/start-phase1-sim.sh
-```
-
-Or start processes individually:
-
-```bash
-plico_dm_server  conf/modulator-sim.conf modulator1
-pysilico_server  conf/camera-sim.conf camera1
-```
-
-## REPL smoke (modulator)
-
-```python
-import plico_dm
-m = plico_dm.modulator('localhost', 7030)
-m.setRadiusInMilliRad(1.5)
-m.setFrequencyInHz(20.0)
-m.setCenterInMilliRad([0.0, 0.0])
-print(m.getStatus())
-```
-
-In-process sim (no server):
-
-```python
-import plico_dm
-m = plico_dm.simulated_modulator()
-m.setRadiusInMilliRad(2.0)
-```
-
-## Drop 1 main GUI
+## Drop 1 — PWFS metrology
 
 ```bash
 source ~/git/.venv-prima/bin/activate
 pip install -e ~/git/prima
-prima-gui                 # interactive (needs display / Qt)
-# offscreen:
-QT_QPA_PLATFORM=offscreen prima-gui --screenshot media/drop1-main-gui.png
-QT_QPA_PLATFORM=offscreen prima-gui --screenshot-measure media/drop1-measure.png
+./scripts/start-phase1-sim.sh
+prima-gui
 python scripts/smoke_drop1_metrology.py
 ```
 
-Panels (Prisma-shaped):
+## Drop 2 — BMC Multi-DM + DaoPrima
 
-- Start/stop plico servers · **Connect live** / Use demo
-- Isoscale WFS frame + pupil overlays · Find pupils
-- Exposure vs FPS vs \(1/f_\mathrm{mod}\) · lock \(t_\mathrm{exp}=1/f\)
-- Modulator + **gain presets** (0…40 mrad)
-- **Take Measure** / Once · Auto Align · masks · remove tip/tilt/focus/astig
-- Slopes / wavefront / pupil canvases · Zernike table · sync popup
+```bash
+# 140-act sim DM server
+./scripts/start-drop2-dm-sim.sh
+# or full sim stack (camera + modulator + DM):
+./scripts/start-drop2-sim.sh
 
-Lab bring-up: power hardware → conf IPs → Start (lab) → Connect live → Find pupils → Take Measure.
+# Open-loop DM panel (demo or --live against port 7050)
+prima-dm-gui
+prima-dm-gui --live
+python scripts/smoke_drop2_dm.py --demo
 
-Screenshots: `media/drop1-*.png`.
+# DaoPrima main GUI (SHM ICD; Python ~60 fps loop until daoBase)
+daoprima-gui
+daoprima-gui --close-loop --screenshot media/daoprima-main.png
+python scripts/smoke_drop2_daoprima.py
+```
 
-## Lab IPs (confirmed; connections not yet smoke-tested on this laptop)
-
-| Device | IP |
-|--------|-----|
-| Manta G-419 | `192.168.30.189` |
-| E-518.I3 | `192.168.30.190` |
+Architecture: RTC writes `/tmp/prima_dm1Cmd.im.shm` → `ShmToDmBridge` → `plico_dm.set_shape` → BMC USB (or 140-act sim). GUIs talk SHM names adapted from daoEkarus — swap the Python integrator for daoBase later without rewriting panels.
 
 ## Product drops
 
-- **Drop 1:** Prisma-like main GUI + PWFS absolute metrology (`prima.metrology` + `prima-gui`).
-- **Drop 2:** DM + dao closed-loop GUI.
-- **Drop 3:** Second focal-plane camera; modulator as fast TT; dao TT loop.
+- **Drop 1:** Prisma-like main GUI + PWFS absolute metrology.
+- **Drop 2:** BMC Multi-DM + DaoPrima AO loop (Python OK at ~Manta rates; daoBase later).
+- **Drop 3:** Focal-plane camera; modulator as fast TT; dao TT loop.
 
 ## Vendor references (DO NOT MODIFY)
 
 | Path | Role |
 |------|------|
-| `vendor/daoEkarus` | **Primary reference** for daoPrima — later |
+| `vendor/daoEkarus` | Primary reference for DaoPrima (SHM names, GUIs, apps) |
 | `vendor/daoTools` | AO pipeline tools |
-| `vendor/daoHw` | Hardware device drivers ↔ dao SHM |
-
-See `vendor/README.md`.
+| `vendor/daoHw` | Hardware ↔ dao SHM |
 
 ## Do not
 
 - Edit anything under `vendor/daoHw`, `vendor/daoTools`, or `vendor/daoEkarus`.
 - Drive the PWFS modulator as a 2-DoF DM (`piTipTilt` / `set_shape`).
-- Fork or modify prisma for this work.
+- Add a native BMC driver under daoHw for Arcetri — use plico + SHM bridge.
