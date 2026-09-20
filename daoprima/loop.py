@@ -1,8 +1,11 @@
-"""Python closed-loop placeholder at ~Manta rates until daoBase plugs in.
+"""Python closed-loop placeholder pieces at ~Manta rates until daoBase plugs in.
 
-GUIs only touch SHM (gain / leak / close switch / modes / dm cmd) — same
-contract as daoEkarus ``closeLoop`` / ``setLoopGain``. Swapping this module
-for a daoTools reconstructor process should not require GUI rewrites.
+The **authoritative synthetic AO cadence** is ``daoprima.sequential_loop.SequentialClosedLoop``::
+
+    apply DM → grab frame → reconstruct → compute next DM
+
+``SimpleIntegratorLoop`` below is the integrator kernel only (modes→commands).
+It must not be driven free-running against an independent camera poller.
 """
 from __future__ import annotations
 
@@ -16,7 +19,10 @@ from daoprima import shm_names as N
 
 
 class SimpleIntegratorLoop:
-    """Modal leaky integrator: modes → M2C → dm1Cmd (+ flat channel 0)."""
+    """Modal leaky integrator kernel: modes → M2C → dm1Cmd (+ flat channel 0).
+
+    Prefer ``SequentialClosedLoop`` for the full DM→frame→recon→DM cycle.
+    """
 
     def __init__(self, target_fps: float = 60.0):
         self.target_fps = target_fps

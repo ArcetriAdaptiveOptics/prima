@@ -22,10 +22,10 @@ from PyQt5.QtWidgets import (
 from daoprima import shm as shm_mod
 from daoprima import shm_names as N
 from daoprima.create_shm import create_default_graph
-from daoprima.loop import (
-    SimpleIntegratorLoop, close_loop, open_loop, set_loop_gain, set_loop_leak,
-)
-from daoprima.bridges import CameraToShmBridge, DemoCamera, DemoDm, ShmToDmBridge
+from daoprima.loop import close_loop, open_loop, set_loop_gain, set_loop_leak
+from daoprima.sequential_loop import SequentialClosedLoop
+from daoprima import shm as shm_mod
+from daoprima import shm_names as N
 
 
 pg.setConfigOptions(imageAxisOrder='row-major', antialias=True)
@@ -75,9 +75,10 @@ class DaoPrimaMain(QMainWindow):
         self.setStyleSheet(STYLESHEET)
 
         create_default_graph()
-        self._loop = SimpleIntegratorLoop(target_fps=60.0)
-        self._cam_bridge = CameraToShmBridge(DemoCamera((256, 256)))
-        self._dm_bridge = ShmToDmBridge(DemoDm())
+        self._loop = SequentialClosedLoop(target_fps=60.0)
+        # legacy aliases used by status text / screenshots
+        self._cam_bridge = self._loop.cam_bridge
+        self._dm_bridge = self._loop.dm_bridge
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -220,9 +221,8 @@ class DaoPrimaMain(QMainWindow):
             np.full(N.SHM_DM1_N_ACTUATORS, 0.5, dtype=np.float32))
 
     def _on_tick(self):
-        self._cam_bridge.step()
+        # Strict sequential cadence: DM apply → frame → recon → next DM
         info = self._loop.step()
-        self._dm_bridge.step()
 
         frame = shm_mod.shm(N.SHM_WFS_FRAME).get_data()
         self._wfs_img.setImage(frame, levels=(0, 255))
@@ -249,13 +249,15 @@ class DaoPrimaMain(QMainWindow):
                 'r=%.2f mrad  f=%.1f Hz  c=(%.2f, %.2f)' % tuple(mod[:4]))
 
         self._loop_state.setText('CLOSED' if info['closed'] else 'OPEN')
+        seq = '→'.join(info.get('sequence', []))
+        hz = (1.0 / info['dt_s']) if info.get('dt_s') else 0.0
         self._tel.setText(
-            'steps=%d  closed_steps=%d  mode_rms=%.4f  fps≈%.0f' % (
+            'steps=%d  closed=%d  mode_rms=%.4f  step_Hz≈%.0f  [%s]' % (
                 info['steps'], self._loop._closed_steps,
-                info['rms_modes'], self._loop.target_fps))
+                info['rms_modes'], hz, seq))
         self.statusBar().showMessage(
-            'SHM backend: %s · bridges: demo camera + demo DM' % (
-                'dao' if shm_mod.has_dao() else 'in-process'))
+            'SHM: %s · sequential DM→frame→recon→DM · no GPU' % (
+                shm_mod.backend_name()))
 
 
 def build_app(argv=None):

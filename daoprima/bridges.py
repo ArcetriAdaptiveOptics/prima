@@ -85,11 +85,20 @@ class CameraToShmBridge:
 
 
 class DemoCamera:
-    """Synthetic PWFS-like frame generator when pysilico is offline."""
+    """Synthetic PWFS-like frame generator when pysilico is offline.
 
-    def __init__(self, hw=(256, 256)):
+    When ``dm`` is set, the frame intensity is weakly modulated by the current
+    DM command so that **apply DM → grab frame** is causally observable
+    (sequential loop tests).
+    """
+
+    def __init__(self, hw=(256, 256), dm=None):
         self.h, self.w = hw
         self._t = 0
+        self._dm = dm
+
+    def set_dm(self, dm):
+        self._dm = dm
 
     def getFutureFrames(self, n):
         self._t += 1
@@ -97,9 +106,32 @@ class DemoCamera:
         frame = np.zeros((self.h, self.w), dtype=np.float32)
         # four soft pupils
         centers = [(0.30, 0.30), (0.30, 0.70), (0.70, 0.30), (0.70, 0.70)]
-        for cy, cx in centers:
-            r2 = (yy - cy * self.h) ** 2 + (xx - cx * self.w) ** 2
-            frame += 120.0 * np.exp(-r2 / (2 * (0.08 * self.h) ** 2))
+        dm_mod = 0.0
+        if self._dm is not None:
+            try:
+                shape = np.asarray(self._dm.get_shape(), dtype=float).ravel()
+                if shape.size:
+                    # tip/tilt-ish from first two actuators + mean stroke
+                    dm_mod = float(shape[0]) * 40.0 + float(
+                        shape[1] if shape.size > 1 else 0.0) * 25.0
+                    dm_mod += float(shape.mean()) * 15.0
+            except Exception:
+                dm_mod = 0.0
+        for i, (cy, cx) in enumerate(centers):
+            # shift pupil centers slightly with DM so recon sees the apply
+            dx = 0.0
+            dy = 0.0
+            if self._dm is not None:
+                try:
+                    shape = np.asarray(self._dm.get_shape(), dtype=float).ravel()
+                    if shape.size >= 2:
+                        dx = 3.0 * float(shape[0])
+                        dy = 3.0 * float(shape[1])
+                except Exception:
+                    pass
+            r2 = (yy - cy * self.h - dy) ** 2 + (xx - cx * self.w - dx) ** 2
+            frame += (120.0 + dm_mod * (0.25 if i % 2 == 0 else -0.25)) * np.exp(
+                -r2 / (2 * (0.08 * self.h) ** 2))
         frame += 8.0 * np.sin(0.05 * self._t + xx / 20.0)
         frame = np.clip(frame, 0, 255)
 
