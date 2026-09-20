@@ -14,6 +14,8 @@ from PyQt5.QtWidgets import (
     QFormLayout, QStatusBar, QComboBox, QSizePolicy,
 )
 
+from prima.gui.branding import make_header_logo, install_watermark
+
 
 pg.setConfigOptions(imageAxisOrder='row-major', antialias=True)
 
@@ -130,13 +132,14 @@ class DmPanelWindow(QMainWindow):
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
 
-        left = QVBoxLayout()
+        left_host = QWidget()
+        left = QVBoxLayout(left_host)
+        left.setContentsMargins(0, 0, 0, 0)
         brand_row = QHBoxLayout()
-        brand = QLabel('Prima')
-        brand.setObjectName('brand')
+        brand_row.setSpacing(12)
+        brand_row.addWidget(make_header_logo(height=28, variant='light'))
         tag = QLabel('Drop 2 · BMC Multi-DM 5.5 µm · open-loop shapes')
         tag.setObjectName('tagline')
-        brand_row.addWidget(brand)
         brand_row.addWidget(tag)
         brand_row.addStretch(1)
         left.addLayout(brand_row)
@@ -153,7 +156,10 @@ class DmPanelWindow(QMainWindow):
         self._minmax = QLabel('shape —')
         self._minmax.setObjectName('tagline')
         left.addWidget(self._minmax)
-        root.addLayout(left, stretch=1)
+        root.addWidget(left_host, stretch=1)
+        install_watermark(
+            left_host, variant='light', opacity=0.10,
+            anchor='bottom-left', height_hint=180)
 
         side = QVBoxLayout()
         side.addWidget(self._build_connect())

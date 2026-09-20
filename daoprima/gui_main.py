@@ -24,8 +24,7 @@ from daoprima import shm_names as N
 from daoprima.create_shm import create_default_graph
 from daoprima.loop import close_loop, open_loop, set_loop_gain, set_loop_leak
 from daoprima.sequential_loop import SequentialClosedLoop
-from daoprima import shm as shm_mod
-from daoprima import shm_names as N
+from prima.gui.branding import make_header_logo, install_watermark
 
 
 pg.setConfigOptions(imageAxisOrder='row-major', antialias=True)
@@ -84,13 +83,14 @@ class DaoPrimaMain(QMainWindow):
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
 
-        left = QVBoxLayout()
+        left_host = QWidget()
+        left = QVBoxLayout(left_host)
+        left.setContentsMargins(0, 0, 0, 0)
         brand_row = QHBoxLayout()
-        brand = QLabel('DaoPrima')
-        brand.setObjectName('brand')
-        tag = QLabel('Drop 2 · PWFS + BMC Multi-DM · SHM ICD (daoEkarus-shaped)')
+        brand_row.setSpacing(12)
+        brand_row.addWidget(make_header_logo(height=28, variant='light'))
+        tag = QLabel('DaoPrima · Drop 2 · PWFS + BMC Multi-DM · SHM ICD')
         tag.setObjectName('tagline')
-        brand_row.addWidget(brand)
         brand_row.addWidget(tag)
         brand_row.addStretch(1)
         left.addLayout(brand_row)
@@ -120,7 +120,10 @@ class DaoPrimaMain(QMainWindow):
         self._mode_plot.setLabel('left', 'mode coeff')
         self._mode_plot.setLabel('bottom', 'mode #')
         left.addWidget(self._mode_plot, stretch=0)
-        root.addLayout(left, stretch=1)
+        root.addWidget(left_host, stretch=1)
+        install_watermark(
+            left_host, variant='light', opacity=0.10,
+            anchor='bottom-left', height_hint=200)
 
         side = QVBoxLayout()
         side.addWidget(self._build_loop())

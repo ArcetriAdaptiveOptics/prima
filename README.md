@@ -62,6 +62,10 @@ Architecture: RTC writes `/tmp/prima_dm1Cmd.im.shm` → `ShmToDmBridge` → `pli
 - **Drop 2:** BMC Multi-DM + DaoPrima AO loop (Python OK at ~Manta rates; daoBase later).
 - **Drop 3:** Focal-plane camera; modulator as fast TT; dao TT loop.
 
+## Branding
+
+Official logo (arcs + PRIMA wordmark) lives in `media/prima-logo.png` (navy) and `media/prima-logo-light.png` (dark UIs). GUIs use `prima.gui.branding` for a small header mark plus a low-opacity corner watermark.
+
 ## Vendor references (DO NOT MODIFY)
 
 | Path | Role |

@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import (
 )
 
 from prima.process_manager import ProcessManager
+from prima.gui.branding import make_header_logo, install_watermark
 from prima.gui.sync_dialog import SyncDialog
 from prima.gui.live_clients import try_connect_live, demo_pair
 from prima.gui.metrology_views import MetrologyViews
@@ -107,14 +108,16 @@ class MainWindow(QMainWindow):
         root.setSpacing(8)
 
         # --- center column: WFS + metrology products ---
-        frame_col = QVBoxLayout()
+        frame_host = QWidget()
+        frame_host.setObjectName('frameHost')
+        frame_col = QVBoxLayout(frame_host)
+        frame_col.setContentsMargins(0, 0, 0, 0)
         frame_col.setSpacing(4)
         brand_row = QHBoxLayout()
-        brand = QLabel('Prima')
-        brand.setObjectName('brand')
+        brand_row.setSpacing(12)
+        brand_row.addWidget(make_header_logo(height=30, variant='light'))
         tag = QLabel('Drop 1 · PWFS absolute optical metrology')
         tag.setObjectName('tagline')
-        brand_row.addWidget(brand)
         brand_row.addWidget(tag)
         brand_row.addStretch(1)
         frame_col.addLayout(brand_row)
@@ -132,7 +135,11 @@ class MainWindow(QMainWindow):
         self._metro.setMinimumHeight(220)
         frame_col.addWidget(self._metro, stretch=2)
 
-        root.addLayout(frame_col, stretch=1)
+        root.addWidget(frame_host, stretch=1)
+        # Subtle mark in free bottom-left chrome — not over WFS center
+        install_watermark(
+            frame_host, variant='light', opacity=0.10,
+            anchor='bottom-left', height_hint=200)
 
         # --- right: scrollable control strip ---
         side = QWidget()
