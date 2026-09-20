@@ -25,7 +25,7 @@ from daoprima import shm_names as N
 from daoprima.create_shm import create_default_graph
 from daoprima.loop import close_loop, open_loop, set_loop_gain, set_loop_leak
 from daoprima.pipeline import PipelinedClosedLoop
-from prima.gui.branding import make_header_logo, install_watermark
+from prima.gui.branding import build_brand_row, install_watermark
 
 
 pg.setConfigOptions(imageAxisOrder='row-major', antialias=True)
@@ -47,7 +47,8 @@ QPushButton:hover { background: rgba(48, 192, 168, 0.30); }
 QPushButton#danger { border-color: #e07070; }
 QPushButton#primary { background: rgba(48, 192, 168, 0.25); }
 QDoubleSpinBox {
-  background: #0a1230; border: 1px solid #1e3a66; color: #e8eef7; padding: 2px;
+  background: #0a1230; border: 1px solid #1e3a66; color: #e8eef7;
+  padding: 2px 6px; min-width: 88px;
 }
 QStatusBar { color: #9bb4d0; }
 """
@@ -71,7 +72,7 @@ class DaoPrimaMain(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('DaoPrima — Drop 2 · AO loop (sim)')
-        self.resize(1180, 780)
+        self.resize(1280, 800)
         self.setStyleSheet(STYLESHEET)
 
         create_default_graph()
@@ -84,17 +85,15 @@ class DaoPrimaMain(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
+        root.setContentsMargins(10, 10, 14, 10)
+        root.setSpacing(10)
 
         left_host = QWidget()
         left = QVBoxLayout(left_host)
-        left.setContentsMargins(0, 0, 0, 0)
-        brand_row = QHBoxLayout()
-        brand_row.setSpacing(12)
-        brand_row.addWidget(make_header_logo(height=28, variant='light'))
-        tag = QLabel('DaoPrima · Drop 2 · PWFS + BMC Multi-DM · SHM ICD')
-        tag.setObjectName('tagline')
-        brand_row.addWidget(tag)
-        brand_row.addStretch(1)
+        left.setContentsMargins(0, 0, 4, 0)
+        brand_row, _, _ = build_brand_row(
+            'DaoPrima · Drop 2 · PWFS + BMC Multi-DM · SHM ICD',
+            logo_height=28, variant='light')
         left.addLayout(brand_row)
 
         viewers = QHBoxLayout()
@@ -128,12 +127,18 @@ class DaoPrimaMain(QMainWindow):
             anchor='bottom-left', height_hint=200)
 
         side = QVBoxLayout()
+        side.setContentsMargins(6, 0, 10, 0)
+        side.setSpacing(8)
         side.addWidget(self._build_loop())
         side.addWidget(self._build_dm())
         side.addWidget(self._build_modulator())
         side.addWidget(self._build_telemetry())
         side.addStretch(1)
-        root.addLayout(side)
+        side_host = QWidget()
+        side_host.setMinimumWidth(320)
+        side_host.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
+        side_host.setLayout(side)
+        root.addWidget(side_host, stretch=0)
 
         self.setStatusBar(QStatusBar())
         self._timer = QTimer(self)
@@ -148,10 +153,13 @@ class DaoPrimaMain(QMainWindow):
         self._gain.setRange(0.0, 2.0)
         self._gain.setSingleStep(0.05)
         self._gain.setValue(0.3)
+        self._gain.setMinimumWidth(96)
         self._leak = QDoubleSpinBox()
         self._leak.setRange(0.0, 1.0)
         self._leak.setSingleStep(0.01)
         self._leak.setValue(0.99)
+        self._leak.setMinimumWidth(96)
+        form.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
         form.addRow('Gain', self._gain)
         form.addRow('Leak', self._leak)
         row = QHBoxLayout()
@@ -188,6 +196,7 @@ class DaoPrimaMain(QMainWindow):
         box = QGroupBox('Modulator / tip-tilt (S-334)')
         form = QFormLayout(box)
         self._mod_info = QLabel('—')
+        self._mod_info.setWordWrap(True)
         form.addRow('SHM', self._mod_info)
         note = QLabel('Drop 2: PWFS modulator · Drop 3: TT DM role')
         note.setWordWrap(True)
@@ -198,6 +207,8 @@ class DaoPrimaMain(QMainWindow):
         box = QGroupBox('Telemetry')
         form = QFormLayout(box)
         self._tel = QLabel('steps=0')
+        self._tel.setWordWrap(True)
+        self._tel.setMinimumWidth(160)
         form.addRow(self._tel)
         return box
 

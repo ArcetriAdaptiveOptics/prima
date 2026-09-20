@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import (
 )
 
 from prima.process_manager import ProcessManager
-from prima.gui.branding import make_header_logo, install_watermark
+from prima.gui.branding import build_brand_row, install_watermark
 from prima.gui.sync_dialog import SyncDialog
 from prima.gui.live_clients import try_connect_live, demo_pair
 from prima.gui.metrology_views import MetrologyViews
@@ -104,8 +104,8 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
-        root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(8)
+        root.setContentsMargins(10, 10, 14, 10)
+        root.setSpacing(10)
 
         # --- center column: WFS + metrology products ---
         frame_host = QWidget()
@@ -113,13 +113,9 @@ class MainWindow(QMainWindow):
         frame_col = QVBoxLayout(frame_host)
         frame_col.setContentsMargins(0, 0, 0, 0)
         frame_col.setSpacing(4)
-        brand_row = QHBoxLayout()
-        brand_row.setSpacing(12)
-        brand_row.addWidget(make_header_logo(height=30, variant='light'))
-        tag = QLabel('Drop 1 · PWFS absolute optical metrology')
-        tag.setObjectName('tagline')
-        brand_row.addWidget(tag)
-        brand_row.addStretch(1)
+        brand_row, _, _ = build_brand_row(
+            'Drop 1 · PWFS absolute optical metrology',
+            logo_height=30, variant='light')
         frame_col.addLayout(brand_row)
 
         self._view = IsoscaleImageView()
@@ -144,8 +140,9 @@ class MainWindow(QMainWindow):
         # --- right: scrollable control strip ---
         side = QWidget()
         side.setFixedWidth(360)
+        side.setMinimumWidth(360)
         side_l = QVBoxLayout(side)
-        side_l.setContentsMargins(0, 0, 0, 0)
+        side_l.setContentsMargins(6, 0, 12, 0)
         side_l.setSpacing(8)
         side_l.addWidget(self._build_servers())
         side_l.addWidget(self._build_camera())
@@ -160,9 +157,10 @@ class MainWindow(QMainWindow):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setFixedWidth(372)
+        scroll.setFixedWidth(380)
         scroll.setFrameShape(scroll.NoFrame)
         scroll.setWidget(side)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         root.addWidget(scroll, stretch=0)
 
         self._status = QStatusBar()

@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from PyQt5.QtCore import Qt, QEvent, QObject
 from PyQt5.QtGui import QPixmap, QPainter
-from PyQt5.QtWidgets import QLabel, QWidget, QHBoxLayout
+from PyQt5.QtWidgets import (
+    QLabel, QWidget, QHBoxLayout, QSizePolicy,
+)
 
 
 def _repo_root() -> Path:
@@ -50,7 +52,11 @@ def load_logo_pixmap(variant: str = 'light', height: int = 28) -> QPixmap:
 
 
 def make_header_logo(height: int = 28, variant: str = 'light') -> QLabel:
-    """Small opaque header mark — keep breathing room around it."""
+    """Small opaque header mark — keep breathing room around it.
+
+    Do not combine setFixedSize(pixmap) with contentsMargins: margins shrink
+    the paint rect and clip the trailing letter of the wordmark.
+    """
     lab = QLabel()
     lab.setObjectName('primaLogo')
     pm = load_logo_pixmap(variant=variant, height=height)
@@ -62,8 +68,45 @@ def make_header_logo(height: int = 28, variant: str = 'light') -> QLabel:
         lab.setObjectName('brand')
     lab.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
     lab.setToolTip('Prima')
-    lab.setContentsMargins(0, 0, 8, 0)
+    lab.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
     return lab
+
+
+def make_header_tagline(text: str) -> QLabel:
+    """Header subtitle that wraps instead of being cropped by the logo/sidebar."""
+    tag = QLabel(text)
+    tag.setObjectName('tagline')
+    tag.setWordWrap(True)
+    tag.setMinimumWidth(120)
+    tag.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+    tag.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+    tag.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    return tag
+
+
+def build_brand_row(tagline: str, *, logo_height: int = 28,
+                    variant: str = 'light') -> Tuple[QHBoxLayout, QLabel, QLabel]:
+    """Logo + wrapping tagline with right margin so text is not flush-clipped."""
+    row = QHBoxLayout()
+    row.setContentsMargins(0, 2, 10, 2)
+    row.setSpacing(12)
+    logo = make_header_logo(height=logo_height, variant=variant)
+    tag = make_header_tagline(tagline)
+    row.addWidget(logo, 0)
+    row.addWidget(tag, 1)
+    return row, logo, tag
+
+
+def decorate_brand_row(layout: QHBoxLayout, tagline: str, *,
+                       logo_height: int = 28, variant: str = 'light') -> QLabel:
+    """Fill an empty QHBoxLayout with logo + wrapping tagline."""
+    layout.setContentsMargins(0, 2, 10, 2)
+    layout.setSpacing(12)
+    logo = make_header_logo(height=logo_height, variant=variant)
+    tag = make_header_tagline(tagline)
+    layout.addWidget(logo, 0)
+    layout.addWidget(tag, 1)
+    return logo
 
 
 class _WatermarkOverlay(QWidget):
@@ -134,15 +177,3 @@ def install_watermark(host: QWidget, *, variant: str = 'light',
     # Keep filter alive
     overlay._host_filter = filt  # noqa: SLF001 — lifetime pin
     return overlay
-
-
-def decorate_brand_row(layout: QHBoxLayout, tagline: str, *,
-                       logo_height: int = 28, variant: str = 'light') -> QLabel:
-    """Fill an empty QHBoxLayout with logo + tagline + stretch (logo left)."""
-    logo = make_header_logo(height=logo_height, variant=variant)
-    tag = QLabel(tagline)
-    tag.setObjectName('tagline')
-    layout.addWidget(logo)
-    layout.addWidget(tag)
-    layout.addStretch(1)
-    return logo

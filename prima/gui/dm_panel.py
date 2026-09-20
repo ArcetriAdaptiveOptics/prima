@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
     QFormLayout, QStatusBar, QComboBox, QSizePolicy,
 )
 
-from prima.gui.branding import make_header_logo, install_watermark
+from prima.gui.branding import build_brand_row, install_watermark
 
 
 pg.setConfigOptions(imageAxisOrder='row-major', antialias=True)
@@ -121,7 +121,7 @@ class DmPanelWindow(QMainWindow):
     def __init__(self, dm=None, host='localhost', port=7050):
         super().__init__()
         self.setWindowTitle('Prima — Drop 2 · BMC Multi-DM open loop')
-        self.resize(900, 640)
+        self.resize(1020, 680)
         self.setStyleSheet(STYLESHEET)
         self._host = host
         self._port = port
@@ -131,17 +131,15 @@ class DmPanelWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
+        root.setContentsMargins(10, 10, 14, 10)
+        root.setSpacing(10)
 
         left_host = QWidget()
         left = QVBoxLayout(left_host)
-        left.setContentsMargins(0, 0, 0, 0)
-        brand_row = QHBoxLayout()
-        brand_row.setSpacing(12)
-        brand_row.addWidget(make_header_logo(height=28, variant='light'))
-        tag = QLabel('Drop 2 · BMC Multi-DM 5.5 µm · open-loop shapes')
-        tag.setObjectName('tagline')
-        brand_row.addWidget(tag)
-        brand_row.addStretch(1)
+        left.setContentsMargins(0, 0, 4, 0)
+        brand_row, _, _ = build_brand_row(
+            'Drop 2 · BMC Multi-DM 5.5 µm · open-loop shapes',
+            logo_height=28, variant='light')
         left.addLayout(brand_row)
 
         self._plot = pg.GraphicsLayoutWidget()
@@ -162,11 +160,17 @@ class DmPanelWindow(QMainWindow):
             anchor='bottom-left', height_hint=180)
 
         side = QVBoxLayout()
+        side.setContentsMargins(6, 0, 10, 0)
+        side.setSpacing(8)
         side.addWidget(self._build_connect())
         side.addWidget(self._build_shapes())
         side.addWidget(self._build_poke())
         side.addStretch(1)
-        root.addLayout(side)
+        side_host = QWidget()
+        side_host.setMinimumWidth(300)
+        side_host.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Preferred)
+        side_host.setLayout(side)
+        root.addWidget(side_host, stretch=0)
 
         self.setStatusBar(QStatusBar())
         self._refresh_status()
@@ -187,6 +191,8 @@ class DmPanelWindow(QMainWindow):
         btn.clicked.connect(self._on_connect)
         form.addRow(btn)
         self._info = QLabel('%d actuators' % N_ACT)
+        self._info.setWordWrap(True)
+        self._info.setMinimumWidth(140)
         form.addRow('Info', self._info)
         return box
 
@@ -248,7 +254,7 @@ class DmPanelWindow(QMainWindow):
             n = _n_actuators(self._dm)
         except Exception:
             n = N_ACT
-        self._info.setText('%s · %d actuators · %s:%d' % (
+        self._info.setText('%s · %d actuators\n%s:%d' % (
             backend, n, self._host, self._port))
 
     def _apply(self, shape):
