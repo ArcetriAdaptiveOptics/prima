@@ -44,10 +44,18 @@ def create_default_graph(frame_hw=(256, 256), n_modes=20):
                 np.zeros((n_modes,), dtype=np.float32))
     shm_mod.shm(N.SHM_WFS1_RECONSTRUCTED_MODES_GAIN,
                 np.ones((n_modes,), dtype=np.float32))
+    shm_mod.shm(N.SHM_WFS1_RECONSTRUCTED_MODES_WITH_GAIN,
+                np.zeros((n_modes,), dtype=np.float32))
     shm_mod.shm(N.SHM_PYRAMID_SIGNAL, np.zeros((n_modes,), dtype=np.float32))
     shm_mod.shm(N.SHM_PYRAMID_PUPIL_FLUX, np.zeros((4,), dtype=np.float32))
     shm_mod.shm(N.SHM_PYRAMID_PUPIL_CENTERS, np.zeros((4, 2), dtype=np.float32))
     shm_mod.shm(N.SHM_PYRAMID_VALID_PIXELS, np.ones((h, w), dtype=np.uint8))
+
+    # frame_id + per-stage stamps (DaoPrima divergence from daoEkarus)
+    for path in (
+            N.SHM_FRAME_ID, N.SHM_FRAME_ID_RECON,
+            N.SHM_FRAME_ID_RTC, N.SHM_FRAME_ID_DM):
+        shm_mod.shm(path, np.zeros((1, 1), dtype=np.uint32))
 
     # Modulator telemetry vector: [radius_mrad, freq_hz, cx, cy]
     shm_mod.shm(N.SHM_MODULATOR, np.array(

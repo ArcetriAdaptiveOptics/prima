@@ -1,0 +1,83 @@
+{
+  "pass": true,
+  "pipeline": "cam\u2192recon\u2192rtc\u2192dm",
+  "mvm_backend": "gpu",
+  "gpu_status": {
+    "cupy_importable": true,
+    "gpu_ok": true,
+    "error": null,
+    "needed_to_enable": null,
+    "device0": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "cupy_version": "14.2.0"
+  },
+  "dm_frames": 40,
+  "last_frame_ids": {
+    "cam": 40,
+    "recon": 40,
+    "rtc": 40,
+    "dm": 40
+  },
+  "id_log_tail": [
+    {
+      "cam": 31,
+      "recon": 31,
+      "rtc": 31,
+      "dm": 31
+    },
+    {
+      "cam": 32,
+      "recon": 32,
+      "rtc": 32,
+      "dm": 32
+    },
+    {
+      "cam": 33,
+      "recon": 33,
+      "rtc": 33,
+      "dm": 33
+    },
+    {
+      "cam": 34,
+      "recon": 34,
+      "rtc": 34,
+      "dm": 34
+    },
+    {
+      "cam": 35,
+      "recon": 35,
+      "rtc": 35,
+      "dm": 35
+    },
+    {
+      "cam": 36,
+      "recon": 36,
+      "rtc": 36,
+      "dm": 36
+    },
+    {
+      "cam": 37,
+      "recon": 37,
+      "rtc": 37,
+      "dm": 37
+    },
+    {
+      "cam": 38,
+      "recon": 38,
+      "rtc": 38,
+      "dm": 38
+    },
+    {
+      "cam": 39,
+      "recon": 39,
+      "rtc": 39,
+      "dm": 39
+    },
+    {
+      "cam": 40,
+      "recon": 40,
+      "rtc": 40,
+      "dm": 40
+    }
+  ],
+  "mvm_vs_cpu_max_abs": 4.76837158203125e-07
+}

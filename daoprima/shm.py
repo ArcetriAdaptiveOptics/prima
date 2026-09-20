@@ -7,17 +7,26 @@ Backend preference:
      used by ``daoprima.shm_names`` (cross-process read/write).
   3. Optional in-process registry (``force_inprocess=True``) for unit tests.
 
+Includes a generation counter + ``wait_for_update`` so pipeline stages can
+wake like daoEkarus semaphore consumers (without requiring daoBase).
+
 Does not modify vendor dao* trees.
 """
 from __future__ import annotations
 
 import os
+import threading
+import time
 from typing import Dict, Optional, Tuple
 
 import numpy as np
 
 _REGISTRY: Dict[str, "ShmImage"] = {}
 _FILE_CACHE: Dict[str, "FileShmImage"] = {}
+# Cross-handle wake for file-backed paths (daoEkarus-style semaphores lite)
+_PATH_COND: Dict[str, threading.Condition] = {}
+_PATH_GEN: Dict[str, int] = {}
+_PATH_LOCK = threading.Lock()
 
 try:
     import dao as _dao  # type: ignore
@@ -31,6 +40,27 @@ _FORCE_INPROCESS = os.environ.get('DAOPRIMA_SHM_INPROCESS', '').lower() in (
     '1', 'true', 'yes')
 
 
+def _path_cond(name: str) -> threading.Condition:
+    with _PATH_LOCK:
+        if name not in _PATH_COND:
+            _PATH_COND[name] = threading.Condition()
+            _PATH_GEN[name] = 0
+        return _PATH_COND[name]
+
+
+def _bump_gen(name: str) -> int:
+    cond = _path_cond(name)
+    with cond:
+        _PATH_GEN[name] = _PATH_GEN.get(name, 0) + 1
+        cond.notify_all()
+        return _PATH_GEN[name]
+
+
+def _current_gen(name: str) -> int:
+    with _PATH_LOCK:
+        return _PATH_GEN.get(name, 0)
+
+
 class ShmImage:
     """Minimal get_data / set_data surface matching dao.shm usage in GUIs."""
 
@@ -39,12 +69,35 @@ class ShmImage:
         if data is None:
             data = np.zeros((1, 1), dtype=np.float32)
         self._data = np.asarray(data).copy()
+        self._gen = 0
+        self._cond = threading.Condition()
 
     def get_data(self) -> np.ndarray:
         return self._data.copy()
 
     def set_data(self, data) -> None:
-        self._data = np.asarray(data).copy()
+        with self._cond:
+            self._data = np.asarray(data).copy()
+            self._gen += 1
+            self._cond.notify_all()
+        _bump_gen(self.name)
+
+    def get_counter(self) -> int:
+        return self._gen
+
+    def wait_for_update(self, last_gen: Optional[int] = None,
+                        timeout: float = 1.0) -> bool:
+        """Block until ``set_data`` advances the generation (dao sem lite)."""
+        if last_gen is None:
+            last_gen = self._gen
+        deadline = time.monotonic() + timeout
+        with self._cond:
+            while self._gen <= last_gen:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self._cond.wait(timeout=remaining)
+            return True
 
     def shape(self):
         return self._data.shape
@@ -74,6 +127,7 @@ class FileShmImage:
         self._mm = None
         self._shape: Tuple[int, ...] = (1, 1)
         self._dtype = np.dtype(np.float32)
+        self._local_gen = 0
         os.makedirs(os.path.dirname(name) or '.', exist_ok=True)
         if data is not None:
             self._create_or_replace(np.asarray(data))
@@ -104,6 +158,7 @@ class FileShmImage:
             if f.tell() < total:
                 f.truncate(total)
         self._open_existing()
+        self._local_gen = _bump_gen(self.name)
 
     def _open_existing(self) -> None:
         with open(self.name, 'rb') as f:
@@ -128,10 +183,28 @@ class FileShmImage:
         if arr.dtype != self._dtype or tuple(arr.shape) != self._shape:
             # reshape / recreate file (consumer may have opened old shape)
             self._create_or_replace(arr)
-            # refresh any other cached handles by rewriting; caller re-opens
             return
         self._mm[:] = arr
         self._mm.flush()
+        self._local_gen = _bump_gen(self.name)
+
+    def get_counter(self) -> int:
+        return max(self._local_gen, _current_gen(self.name))
+
+    def wait_for_update(self, last_gen: Optional[int] = None,
+                        timeout: float = 1.0) -> bool:
+        """Wait until another writer bumps this path's generation."""
+        cond = _path_cond(self.name)
+        if last_gen is None:
+            last_gen = _current_gen(self.name)
+        deadline = time.monotonic() + timeout
+        with cond:
+            while _PATH_GEN.get(self.name, 0) <= last_gen:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                cond.wait(timeout=remaining)
+            return True
 
     def shape(self):
         return self._shape

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 
 import numpy as np
 import pyqtgraph as pg
@@ -23,7 +24,7 @@ from daoprima import shm as shm_mod
 from daoprima import shm_names as N
 from daoprima.create_shm import create_default_graph
 from daoprima.loop import close_loop, open_loop, set_loop_gain, set_loop_leak
-from daoprima.sequential_loop import SequentialClosedLoop
+from daoprima.pipeline import PipelinedClosedLoop
 from prima.gui.branding import make_header_logo, install_watermark
 
 
@@ -74,8 +75,9 @@ class DaoPrimaMain(QMainWindow):
         self.setStyleSheet(STYLESHEET)
 
         create_default_graph()
-        self._loop = SequentialClosedLoop(target_fps=60.0)
-        # legacy aliases used by status text / screenshots
+        self._loop = PipelinedClosedLoop(target_fps=60.0, prefer_gpu=True)
+        self._loop.start()
+        # aliases used by status text / screenshots
         self._cam_bridge = self._loop.cam_bridge
         self._dm_bridge = self._loop.dm_bridge
 
@@ -223,9 +225,16 @@ class DaoPrimaMain(QMainWindow):
         shm_mod.shm(N.SHM_DM1_CHANNEL_0).set_data(
             np.full(N.SHM_DM1_N_ACTUATORS, 0.5, dtype=np.float32))
 
+    def closeEvent(self, event):
+        try:
+            self._loop.stop()
+        except Exception:
+            pass
+        super().closeEvent(event)
+
     def _on_tick(self):
-        # Strict sequential cadence: DM apply → frame → recon → next DM
-        info = self._loop.step()
+        # Pipeline runs in background threads; GUI only refreshes telemetry
+        info = self._loop.snapshot()
 
         frame = shm_mod.shm(N.SHM_WFS_FRAME).get_data()
         self._wfs_img.setImage(frame, levels=(0, 255))
@@ -252,16 +261,14 @@ class DaoPrimaMain(QMainWindow):
                 'r=%.2f mrad  f=%.1f Hz  c=(%.2f, %.2f)' % tuple(mod[:4]))
 
         self._loop_state.setText('CLOSED' if info['closed'] else 'OPEN')
-        seq = '→'.join(info.get('sequence', []))
-        hz = (1.0 / info['dt_s']) if info.get('dt_s') else 0.0
+        fid = info.get('frame_id_dm', 0)
         self._tel.setText(
-            'steps=%d  closed=%d  mode_rms=%.4f  step_Hz≈%.0f  [%s]' % (
-                info['steps'], self._loop._closed_steps,
-                info['rms_modes'], hz, seq))
+            'dm_frames=%d  closed=%d  mode_rms=%.4f  frame_id=%s  mvm=%s' % (
+                info.get('dm_frames', 0), info.get('closed_steps', 0),
+                info.get('rms_modes', 0.0), fid, info.get('mvm_backend')))
         self.statusBar().showMessage(
-            'SHM: %s · sequential DM→frame→recon→DM · no GPU' % (
-                shm_mod.backend_name()))
-
+            'SHM: %s · pipelined cam→recon→rtc→dm · frame_id · MVM=%s' % (
+                shm_mod.backend_name(), info.get('mvm_backend')))
 
 def build_app(argv=None):
     app = QApplication(argv or ['daoprima-gui'])
@@ -290,17 +297,23 @@ def main(argv=None):
         for _ in range(30):
             win._on_tick()
             app.processEvents()
+            time.sleep(0.02)
 
     if args.screenshot:
         app.processEvents()
         for _ in range(10):
             win._on_tick()
             app.processEvents()
+            time.sleep(0.02)
         ok = win.grab().save(args.screenshot)
         print('screenshot_saved=%s path=%s' % (ok, args.screenshot))
+        win._loop.stop()
         return 0 if ok else 1
 
-    return app.exec_()
+    try:
+        return app.exec_()
+    finally:
+        win._loop.stop()
 
 
 if __name__ == '__main__':

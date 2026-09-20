@@ -1,11 +1,12 @@
 """Python closed-loop placeholder pieces at ~Manta rates until daoBase plugs in.
 
-The **authoritative synthetic AO cadence** is ``daoprima.sequential_loop.SequentialClosedLoop``::
+**Authoritative cadence** (daoEkarus-aligned): ``daoprima.pipeline.PipelinedClosedLoop``
+— free-run / pipelined SHM stages with ``frame_id`` propagation.
 
-    apply DM → grab frame → reconstruct → compute next DM
+Legacy: ``daoprima.sequential_loop.SequentialClosedLoop`` (strict one-thread
+hand-off) remains available for causality experiments only.
 
 ``SimpleIntegratorLoop`` below is the integrator kernel only (modes→commands).
-It must not be driven free-running against an independent camera poller.
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ from daoprima import shm_names as N
 class SimpleIntegratorLoop:
     """Modal leaky integrator kernel: modes → M2C → dm1Cmd (+ flat channel 0).
 
-    Prefer ``SequentialClosedLoop`` for the full DM→frame→recon→DM cycle.
+    Prefer ``PipelinedClosedLoop`` for the full AO pipeline with frame_id.
     """
 
     def __init__(self, target_fps: float = 60.0):

@@ -1,11 +1,11 @@
-"""Strict sequential synthetic AO cycle for DaoPrima.
+"""Strict sequential synthetic AO cycle for DaoPrima (legacy / causality tests).
 
-Cadence (one iteration)::
+Prefer ``daoprima.pipeline.PipelinedClosedLoop`` for daoEkarus-aligned free-run
+stages with ``frame_id``. This module keeps a single-thread::
 
     apply DM  →  grab WFS frame  →  reconstruct  →  compute next DM
 
-Not free-running: camera and DM are not independent pollers. One hand-off
-per step. GPU is not used (NumPy on CPU).
+for experiments that need a causal lock. GPU is not used here (NumPy on CPU).
 """
 from __future__ import annotations
 

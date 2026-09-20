@@ -56,7 +56,15 @@ SHM_FASTTT_LOOP_LEAK = "/tmp/prima_fast_tt_lpLeak.im.shm"
 # --- Modes / reconstructor telemetry ---
 SHM_WFS1_RECONSTRUCTED_MODES = "/tmp/prima_wfs1Modes.im.shm"
 SHM_WFS1_RECONSTRUCTED_MODES_GAIN = "/tmp/prima_wfs1ModesGain.im.shm"
+SHM_WFS1_RECONSTRUCTED_MODES_WITH_GAIN = "/tmp/prima_wfs1ModesWithGain.im.shm"
 SHM_PYRAMID_2_DM1_REC = "/tmp/prima_pwfs_CM.im.shm"
+
+# --- frame_id (DaoPrima divergence from daoEkarus — intentional) ---
+# Camera assigns; each stage stamps the ID it processed for E2E smoke.
+SHM_FRAME_ID = "/tmp/prima_frame_id.im.shm"
+SHM_FRAME_ID_RECON = "/tmp/prima_frame_id_recon.im.shm"
+SHM_FRAME_ID_RTC = "/tmp/prima_frame_id_rtc.im.shm"
+SHM_FRAME_ID_DM = "/tmp/prima_frame_id_dm.im.shm"
 
 # daoEkarus aliases kept for drop-in script ports (map to Prima paths)
 SHM_OCAM_FRAME = SHM_WFS_FRAME

@@ -3,7 +3,7 @@
 New Arcetri AO packaging/glue project (not a fork of prisma).
 
 | Slice | Role |
-|-------|------|
+|------|------|
 | **`prima`** | Drop 1 PWFS metrology on the **plico** stack |
 | **`daoprima`** | Drop 2+ AO loop scaffold — daoEkarus-shaped SHM/GUI, plico I/O |
 
@@ -48,23 +48,22 @@ prima-dm-gui
 prima-dm-gui --live
 python scripts/smoke_drop2_dm.py --demo
 
-# DaoPrima main GUI (SHM ICD; Python ~60 fps loop until daoBase)
+# DaoPrima main GUI (SHM ICD; pipelined Python loop until daoBase)
 daoprima-gui
 daoprima-gui --close-loop --screenshot media/daoprima-main.png
-python scripts/smoke_drop2_daoprima.py
+
+# Pipelined loop + frame_id E2E + MVM backend report
+python scripts/smoke_drop2_daoprima.py --frames 80
+python scripts/smoke_frame_id.py
 ```
 
-Architecture: RTC writes `/tmp/prima_dm1Cmd.im.shm` → `ShmToDmBridge` → `plico_dm.set_shape` → BMC USB (or 140-act sim). GUIs talk SHM names adapted from daoEkarus — swap the Python integrator for daoBase later without rewriting panels.
+Architecture: free-run stages `cam → recon(MVM) → rtc → DM` with **`frame_id`** SHM stamps (DaoPrima improvement over daoEkarus). RTC writes `/tmp/prima_dm1Cmd.im.shm` → `ShmToDmBridge` → `plico_dm.set_shape` → BMC USB (or 140-act sim). MVM prefers CuPy GPU (daoMvMGPU-like); falls back to NumPy if CuPy/CUDA missing.
 
 ## Product drops
 
 - **Drop 1:** Prisma-like main GUI + PWFS absolute metrology.
 - **Drop 2:** BMC Multi-DM + DaoPrima AO loop (Python OK at ~Manta rates; daoBase later).
 - **Drop 3:** Focal-plane camera; modulator as fast TT; dao TT loop.
-
-## Branding
-
-Official logo (arcs + PRIMA wordmark) lives in `media/prima-logo.png` (navy) and `media/prima-logo-light.png` (dark UIs). GUIs use `prima.gui.branding` for a small header mark plus a low-opacity corner watermark.
 
 ## Vendor references (DO NOT MODIFY)
 
