@@ -11,11 +11,13 @@ New Arcetri AO packaging/glue project (not a fork of prisma).
 
 | Role | Device | Path |
 |------|--------|------|
-| WFS camera | Allied Vision **Manta G-419** (`192.168.30.189`) | pysilico `model=avt` |
-| WFS camera (alt) | Allied Vision **Alvium G1** | same `avt` path — conf `camera-alvium-g1.conf`; Drop 1 swap or Drop 3 FP |
-| PWFS modulator | PI **S-334** @ E-518 (`192.168.30.190`) | `plico_dm` `piS334Modulator` |
-| Science DM | BMC **Multi-DM 5.5 µm** (140 act, USB) | `plico_dm_server` `bmc` / `bmcMultiDM` |
+| WFS camera | Allied Vision **Manta G-419** (`192.168.30.189`) | **Aravis** GigE (live) |
+| WFS camera (alt) | Allied Vision **Alvium G1** | same Aravis path later; conf `camera-alvium-g1.conf` |
+| PWFS modulator | PI **S-334** @ E-518 (`192.168.30.190:50000`) | **direct GCS TCP** |
+| Science DM | BMC **Multi-DM 5.5 µm** (140 act, USB) | `plico_dm_server` deferred |
 | Tip-tilt | S-334 | Drop 2 modulator; Drop 3 TT DM + FP camera |
+
+pysilico_server / plico_dm_server paths are deferred for Drop 1 absolute metrology.
 
 ## Conf
 
@@ -28,9 +30,9 @@ New Arcetri AO packaging/glue project (not a fork of prisma).
 ## Drop 1 — PWFS metrology
 
 **Desktop (x2go):** double-click **Prima Drop 1** on the Desktop (or open it from the Applications menu).  
-That runs `scripts/start-drop1-live-gui.sh` → `prima-gui --live-aravis --aravis-ip 192.168.30.189` (Manta).
+That runs `scripts/start-drop1-live-gui.sh` → `prima-gui --live` (Aravis Manta + direct E-518 GCS).
 
-In the GUI, lab modulator needs **Start** (lab profile) then **Connect live** once `plico_dm_server` can stay up on `:7030`. **Note:** the PI GCS2 shared library (`libpi_pi_gcs2.so` from the PI E-518 SDK) is still missing on this laptop, so real E-518 via `plico_dm_server` / `pi_gcs` will not start until that `.so` is installed — camera live works without it.
+GUI controls that work now: **Connect live** / **Use demo**, exposure lock `t_exp=1/f_mod`, modulator radius/freq/center (**Apply to E-518**), ROI crop, pupils, Take Measure / Auto Align. No Start/Stop lab servers — plico ports `:7130` / `:7030` are not used.
 
 ```bash
 source ~/git/.venv-prima/bin/activate
@@ -39,10 +41,9 @@ pip install -e ~/git/prima
 # Live bench GUI (same as the desktop launcher)
 ./scripts/start-drop1-live-gui.sh
 # or:
-prima-gui --live-aravis --aravis-ip 192.168.30.189
+prima-gui --live --aravis-ip 192.168.30.189 --e518-host 192.168.30.190
 
-# Sim stack (no camera/hardware)
-./scripts/start-phase1-sim.sh
+# Offline demo only
 prima-gui
 python scripts/smoke_drop1_metrology.py
 ```

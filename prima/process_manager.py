@@ -47,6 +47,21 @@ class ProcessManager:
         log_dir.mkdir(parents=True, exist_ok=True)
         self.stop()
         env = os.environ.copy()
+        # Vimba X GenTL for stock pysilico avt (Manta)
+        cti = os.environ.get(
+            'PRIMA_VIMBAX_CTI',
+            os.path.expanduser('~/git/vendor-sdks/VimbaX_2025-2/cti'))
+        if os.path.isdir(cti):
+            prev = env.get('GENICAM_GENTL64_PATH', '')
+            parts = [p for p in prev.split(':') if p and p != cti]
+            env['GENICAM_GENTL64_PATH'] = ':'.join([cti] + parts)
+            api = os.path.abspath(os.path.join(cti, '..', 'api', 'lib'))
+            bindir = os.path.abspath(os.path.join(cti, '..', 'bin'))
+            ld = [p for p in env.get('LD_LIBRARY_PATH', '').split(':') if p]
+            for p in (api, bindir):
+                if p not in ld:
+                    ld.insert(0, p)
+            env['LD_LIBRARY_PATH'] = ':'.join(ld)
         cam_log = open(log_dir / 'camera.out', 'ab')
         mod_log = open(log_dir / 'modulator.out', 'ab')
         self._log_handles = [cam_log, mod_log]
@@ -54,10 +69,18 @@ class ProcessManager:
             ['pysilico_server', str(cam_conf), 'camera1'],
             stdout=cam_log, stderr=subprocess.STDOUT, env=env,
             start_new_session=True)
-        self._procs['modulator'] = subprocess.Popen(
-            ['plico_dm_server', str(mod_conf), 'modulator1'],
-            stdout=mod_log, stderr=subprocess.STDOUT, env=env,
-            start_new_session=True)
+        # Lab modulator via plico is deferred; still spawn sim profile only.
+        if self.profile == 'sim':
+            self._procs['modulator'] = subprocess.Popen(
+                ['plico_dm_server', str(mod_conf), 'modulator1'],
+                stdout=mod_log, stderr=subprocess.STDOUT, env=env,
+                start_new_session=True)
+        else:
+            # Lab: Drop1 uses direct GCS TCP — do not start plico_dm_server.
+            self._procs['modulator'] = None
+            mod_log.write(
+                b'(skipped) lab modulator uses direct PI GCS TCP, not plico_dm\n')
+            mod_log.flush()
         if self.include_dm:
             dm_log = open(log_dir / 'dm.out', 'ab')
             self._log_handles.append(dm_log)
@@ -65,11 +88,14 @@ class ProcessManager:
                 ['plico_dm_server', str(dm_conf), 'dmBmc'],
                 stdout=dm_log, stderr=subprocess.STDOUT, env=env,
                 start_new_session=True)
-        time.sleep(1.0 if self.profile in ('lab', 'alvium') else 0.5)
+        time.sleep(2.5 if self.profile in ('lab', 'alvium') else 0.5)
         st = self.status()
-        # Surface early exits (e.g. missing PI GCS2 lib, Vimba) in status.
+        # Surface early exits (e.g. missing Vimba) in status.
         for name, proc in self._procs.items():
-            if proc is not None and proc.poll() is not None:
+            if proc is None:
+                st[name] = {'pid': None, 'running': False, 'skipped': True}
+                continue
+            if proc.poll() is not None:
                 st[name]['running'] = False
                 st[name]['exit_code'] = proc.returncode
                 log_path = log_dir / ('%s.out' % name)

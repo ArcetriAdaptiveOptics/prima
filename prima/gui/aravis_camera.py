@@ -1,9 +1,7 @@
-"""Aravis (GenICam) live camera for Allied Vision GigE when Vimba SDK is absent.
+"""Aravis (GenICam) live camera for Allied Vision GigE Vision.
 
-Used as a Drop 1 bring-up path: Manta is reachable on the lab NIC, but
-pysilico `model=avt` needs Allied Vision Vimba / VimbaPython (not installed).
-Aravis streams the same GigE Vision camera; this wrapper matches DemoCamera /
-LiveCameraWrapper so prima-gui can display frames.
+Drop 1 primary camera path: Manta on the lab NIC via Aravis continuous grab.
+Wrapper matches DemoCamera so prima-gui can display frames.
 """
 from __future__ import annotations
 
@@ -51,15 +49,18 @@ class AravisLiveCamera:
         self._stream = self._cam.create_stream(None, None)
         if self._stream is None:
             raise RuntimeError('Aravis create_stream failed for %s' % self._ip)
-        # Match working arv-camera-test: avoid raw packet socket privilege issues
-        try:
-            self._stream.set_property('packet-socket', False)
-        except Exception:
-            pass
+        # Do not touch packet-socket property (missing on some Aravis builds).
         payload = self._cam.get_payload()
         for _ in range(int(n_buffers)):
             self._stream.push_buffer(Aravis.Buffer.new_allocate(payload))
         self._start_acquisition()
+        # Wait briefly for first real frame (avoid returning 64x64 zeros).
+        t0 = time.time()
+        while time.time() - t0 < 3.0:
+            with self._mutex:
+                if self._last.shape != (64, 64) or int(self._last.max()) > 0:
+                    break
+            time.sleep(0.05)
 
     def _start_acquisition(self):
         self._cam.start_acquisition()

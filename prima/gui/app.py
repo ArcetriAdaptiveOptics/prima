@@ -16,10 +16,20 @@ def main(argv=None):
         help='Run one Take Measure then screenshot main window')
     parser.add_argument(
         '--live-aravis', action='store_true',
-        help='Connect Aravis GigE camera (Manta) before screenshot / run')
+        help='Connect live Aravis Manta + direct PI E-518 GCS')
     parser.add_argument(
-        '--aravis-ip', default='192.168.30.189',
-        help='GigE camera IP for --live-aravis / Connect live fallback')
+        '--live', action='store_true',
+        help='Same as --live-aravis (Drop 1 live stack)')
+    parser.add_argument(
+        '--aravis-ip', default=os.environ.get('PRIMA_ARAVIS_IP', '192.168.30.189'),
+        help='GigE camera IP for Aravis')
+    parser.add_argument(
+        '--e518-host', default=os.environ.get('PRIMA_E518_HOST', '192.168.30.190'),
+        help='PI E-518 host for direct GCS modulator')
+    parser.add_argument(
+        '--e518-port', type=int,
+        default=int(os.environ.get('PRIMA_E518_PORT', '50000')),
+        help='PI E-518 GCS TCP port')
     parser.add_argument('--platform', default=None)
     args, qt_args = parser.parse_known_args(argv)
 
@@ -32,48 +42,51 @@ def main(argv=None):
     from prima.gui.sync_dialog import SyncDialog
     app, win = build_app(['prima-gui'] + qt_args, demo=True)
 
-    if args.live_aravis:
-        # Camera via Aravis (Vimba/pysilico often unavailable). Still try
-        # ModulatorClient on :7030 so E-518 can be live if server is up.
-        from prima.gui.aravis_camera import connect_aravis
-        from prima.gui.live_clients import connect_modulator
-        try:
-            cam = connect_aravis(args.aravis_ip)
-        except Exception as e:
-            print('live_aravis_failed: %s' % e)
+    want_live = bool(args.live_aravis or args.live)
+    if want_live:
+        from prima.gui.live_clients import try_connect_live
+        cam, mod, errors = try_connect_live(
+            aravis_ip=args.aravis_ip,
+            e518_host=args.e518_host,
+            e518_port=args.e518_port,
+        )
+        if cam is None:
+            print('live_camera_failed: %s' % ('; '.join(errors) or 'unknown'))
             return 2
-        win._camera = cam
         live_mod = None
-        mod_err = None
-        try:
-            m = connect_modulator()
-            _ = m.getStatus()
-            live_mod = m
-        except Exception as e:
-            mod_err = e
+        if mod is not None:
+            try:
+                _ = mod.getStatus()
+                live_mod = mod
+            except Exception as e:
+                errors.append('modulator(probe): %s' % e)
+                live_mod = None
+        win._camera = cam
         if live_mod is not None:
             win._modulator = live_mod
             win._engine.rebind(camera=cam, modulator=live_mod)
             try:
                 mod_name = live_mod.name()
             except Exception:
-                mod_name = 'live@7030'
+                mod_name = type(live_mod).__name__
             win._server_status.setText(
                 'LIVE  cam=%s  mod=%s' % (cam.name(), mod_name))
-            print('live_aravis_ok cam=%s mod=live' % cam.name(), flush=True)
+            print('live_ok cam=%s mod=%s' % (cam.name(), mod_name), flush=True)
             win._pull_mod_to_spins()
             win._apply_modulator()
         else:
             win._engine.rebind(camera=cam, modulator=None)
             win._server_status.setText(
-                'LIVE  cam=%s  mod=DEMO (no :7030 — Start lab + Connect live)%s'
+                'LIVE  cam=%s  mod=DEMO%s'
                 % (cam.name(),
-                   ('\n%s' % mod_err) if mod_err else ''))
-            print('live_aravis_ok cam=%s mod=demo (%s)' % (
-                cam.name(), mod_err), flush=True)
+                   ('\n' + '; '.join(errors)) if errors else ''))
+            print('live_ok cam=%s mod=demo (%s)' % (
+                cam.name(), '; '.join(errors)), flush=True)
         win._using_live = True
+        win._sync_exposure_spin_enabled()
+        if win._lock_exp.isChecked():
+            win._apply_exp_from_freq()
         sys.stdout.flush()
-        # Raise window on the current display
         win.show()
         win.raise_()
         win.activateWindow()
@@ -82,7 +95,7 @@ def main(argv=None):
     if args.screenshot or args.screenshot_sync or args.screenshot_measure:
         app.processEvents()
         # More ticks when live so first real frames arrive
-        n_ticks = 40 if args.live_aravis else 8
+        n_ticks = 40 if want_live else 8
         for _ in range(n_ticks):
             win._on_tick()
             app.processEvents()
@@ -106,6 +119,7 @@ def main(argv=None):
             dlg.show()
             app.processEvents()
             win._lock_exp.setChecked(False)
+            win._sync_exposure_spin_enabled()
             win._exp_spin.setValue(40.0)
             win._on_exposure_changed()
             dlg._run_sweep()
