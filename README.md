@@ -1,102 +1,64 @@
-# Prima
+# Prima — Drop 1 PWFS absolute metrology
 
-New Arcetri AO packaging/glue project (not a fork of prisma).
+Arcetri packaging for Drop 1: live **Aravis** Manta frames + **direct PI E-518 GCS** tip/tilt modulation, with a Prisma-like metrology GUI.
 
-| Slice | Role |
-|------|------|
-| **`prima`** | Drop 1 PWFS metrology on the **plico** stack |
-| **`daoprima`** | Drop 2+ AO loop scaffold — daoEkarus-shaped SHM/GUI, plico I/O |
-
-## Hardware (bench)
+## Live stack (this PR)
 
 | Role | Device | Path |
 |------|--------|------|
-| WFS camera | Allied Vision **Manta G-419** (`192.168.30.189`) | **Aravis** GigE (live) |
-| WFS camera (alt) | Allied Vision **Alvium G1** | same Aravis path later; conf `camera-alvium-g1.conf` |
+| WFS camera | Allied Vision **Manta G-419** (`192.168.30.189`) | **Aravis** GigE |
 | PWFS modulator | PI **S-334** @ E-518 (`192.168.30.190:50000`) | **direct GCS TCP** |
-| Science DM | BMC **Multi-DM 5.5 µm** (140 act, USB) | `plico_dm_server` deferred |
-| Tip-tilt | S-334 | Drop 2 modulator; Drop 3 TT DM + FP camera |
 
-pysilico_server / plico_dm_server paths are deferred for Drop 1 absolute metrology.
+**Deferred (not in this PR):** `pysilico_server` (`:7130`), `plico_dm_server` (`:7030`), VimbaX/vmbpy camera path, BMC Multi-DM / DaoPrima (Drop 2).
 
-## Conf
-
-| File | Role |
-|------|------|
-| `conf/modulator-sim.conf` / `modulator-lab-e518.conf` | PWFS modulator |
-| `conf/camera-sim.conf` / `camera-manta-g419.conf` / `camera-alvium-g1.conf` | WFS GigE cameras |
-| `conf/dm-bmc-sim.conf` / `dm-bmc-lab.conf` | BMC Multi-DM 140-act |
-
-## Drop 1 — PWFS metrology
-
-**Desktop (x2go):** double-click **Prima Drop 1** on the Desktop (or open it from the Applications menu).  
-That runs `scripts/start-drop1-live-gui.sh` → `prima-gui --live` (Aravis Manta + direct E-518 GCS).
-
-GUI controls that work now: **Connect live** / **Use demo**, exposure lock `t_exp=1/f_mod`, modulator radius/freq/center (**Apply to E-518**), ROI crop, pupils, Take Measure / Auto Align. No Start/Stop lab servers — plico ports `:7130` / `:7030` are not used.
+## Run
 
 ```bash
-source ~/git/.venv-prima/bin/activate
+source ~/git/.venv-prima/bin/activate   # or your venv
 pip install -e ~/git/prima
 
-# Live bench GUI (same as the desktop launcher)
+# Live bench (also Desktop launcher “Prima Drop 1”)
 ./scripts/start-drop1-live-gui.sh
 # or:
 prima-gui --live --aravis-ip 192.168.30.189 --e518-host 192.168.30.190
 
-# Offline demo only
+# Offline demo
 prima-gui
 python scripts/smoke_drop1_metrology.py
 ```
 
-Re-install the launcher after a fresh clone:
+Desktop installer:
 
 ```bash
-cp ~/git/prima/scripts/Prima-Drop1.desktop ~/Desktop/
-cp ~/git/prima/scripts/Prima-Drop1.desktop ~/.local/share/applications/
-chmod +x ~/Desktop/Prima-Drop1.desktop ~/git/prima/scripts/start-drop1-live-gui.sh
+cp scripts/Prima-Drop1.desktop ~/Desktop/ ~/.local/share/applications/
+chmod +x ~/Desktop/Prima-Drop1.desktop scripts/start-drop1-live-gui.sh
 gio set ~/Desktop/Prima-Drop1.desktop metadata::trusted true
 ```
 
-## Drop 2 — BMC Multi-DM + DaoPrima
+## GUI (what works)
+
+- **Connect live** / **Use demo** (no plico Start/Stop)
+- Exposure lock `t_exp = 1/f_mod`; radius does not change exposure
+- Modulator radius / freq / center → **Apply to E-518**; gain presets 0–40 mrad
+- Idle park at **+50 V** mid-scale; modulation swings around mid
+- E-518 live readback: Vpp, frequency, VOL, WGO / PARKED
+- Pupils, Take Measure, Auto Align, sync dialog
+
+## Hardware notes
+
+- Camera: single Aravis owner (close other Vision apps before Connect).
+- Modulator: single GCS TCP client; mid-travel park uses `SVA` with servo off.
+- Safe radius ceiling default **40 mrad** (`PRIMA_MOD_MAX_MRAD`).
+
+## Tests (bench)
 
 ```bash
-# 140-act sim DM server
-./scripts/start-drop2-dm-sim.sh
-# or full sim stack (camera + modulator + DM):
-./scripts/start-drop2-sim.sh
-
-# Open-loop DM panel (demo or --live against port 7050)
-prima-dm-gui
-prima-dm-gui --live
-python scripts/smoke_drop2_dm.py --demo
-
-# DaoPrima main GUI (SHM ICD; pipelined Python loop until daoBase)
-daoprima-gui
-daoprima-gui --close-loop --screenshot media/daoprima-main.png
-
-# Pipelined loop + frame_id E2E + MVM backend report
-python scripts/smoke_drop2_daoprima.py --frames 80
-python scripts/smoke_frame_id.py
+python scripts/test_drop1_exp_freq_sync.py
+python scripts/test_drop1_pi_direct.py
+python scripts/test_drop1_park_midscale.py
+python scripts/test_drop1_modulation_frames.py
 ```
 
-Architecture: free-run stages `cam → recon(MVM) → rtc → DM` with **`frame_id`** SHM stamps (DaoPrima improvement over daoEkarus). RTC writes `/tmp/prima_dm1Cmd.im.shm` → `ShmToDmBridge` → `plico_dm.set_shape` → BMC USB (or 140-act sim). MVM prefers CuPy GPU (daoMvMGPU-like); falls back to NumPy if CuPy/CUDA missing.
+## Vendor references (do not modify)
 
-## Product drops
-
-- **Drop 1:** Prisma-like main GUI + PWFS absolute metrology.
-- **Drop 2:** BMC Multi-DM + DaoPrima AO loop (Python OK at ~Manta rates; daoBase later).
-- **Drop 3:** Focal-plane camera; modulator as fast TT; dao TT loop.
-
-## Vendor references (DO NOT MODIFY)
-
-| Path | Role |
-|------|------|
-| `vendor/daoEkarus` | Primary reference for DaoPrima (SHM names, GUIs, apps) |
-| `vendor/daoTools` | AO pipeline tools |
-| `vendor/daoHw` | Hardware ↔ dao SHM |
-
-## Do not
-
-- Edit anything under `vendor/daoHw`, `vendor/daoTools`, or `vendor/daoEkarus`.
-- Drive the PWFS modulator as a 2-DoF DM (`piTipTilt` / `set_shape`).
-- Add a native BMC driver under daoHw for Arcetri — use plico + SHM bridge.
+Read-only trees under `vendor/` (daoEkarus / daoTools / daoHw) if present — not required to run Drop 1.
