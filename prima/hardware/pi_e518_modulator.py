@@ -25,6 +25,9 @@ DEFAULT_SERIAL = '110032051'
 # R=40 → ~4–96 V (inside soft 0–100 V). Override with PRIMA_MOD_MAX_MRAD.
 MAX_SAFE_RADIUS_MRAD = float(os.environ.get('PRIMA_MOD_MAX_MRAD', '40'))
 
+# Mid-travel park (V). All mrad swings are centered here so pupils stay put.
+PARK_MID_VOLTAGE_V = float(os.environ.get('PRIMA_MOD_PARK_V', '50'))
+
 # Prisma calib/modulator/pi_calibration.py SN 110032051
 _CALIB = {
     '110032051': {
@@ -88,6 +91,10 @@ class PiE518Modulator:
         self._table_vpp_a = 0.0
         self._table_vpp_b = 0.0
         self._last_vol = {1: float('nan'), 2: float('nan'), 3: float('nan')}
+        self._parked = False
+        self._park_sva = [55.0, 55.0]
+        # Mid-travel park target is always +50 V (0–100 soft range), not calib pivot.
+        self._park_v = float(PARK_MID_VOLTAGE_V)
         if connect:
             self.connect()
 
@@ -117,6 +124,7 @@ class PiE518Modulator:
                     '(close other Drop1/GCS sessions and retry)' % idn)
             try:
                 self._set_up_controller()
+                self.park_midscale()
             except (GcsTcpError, PiGcsError) as exc:
                 self._gcs.close()
                 raise PiGcsError('E-518 setUp failed: %s' % exc) from exc
@@ -127,17 +135,17 @@ class PiE518Modulator:
             try:
                 if self._gcs.connected:
                     try:
-                        self.stop_modulation()
+                        self.park_midscale()
                     except Exception:
-                        pass
-                    try:
-                        self._gcs.set('SVO A 0 B 0 C 0', check_err=False)
-                    except Exception:
-                        pass
+                        try:
+                            self.stop_modulation()
+                        except Exception:
+                            pass
             finally:
                 self._gcs.close()
                 self._setup_done = False
                 self._modulating = False
+                self._parked = False
 
     def _set_up_controller(self) -> None:
         g = self._gcs
@@ -173,6 +181,61 @@ class PiE518Modulator:
         g.query('ERR?', wait_s=0.3)
         self._servo_dt = self._query_servo_dt()
         self._wtr = self._query_wtr()
+
+    def _read_vol_ab(self):
+        raw = self._gcs.query('VOL?', wait_s=0.3)
+        vals = self._parse_vol(raw)
+        if vals:
+            self._last_vol.update(vals)
+        return float(vals.get(1, float('nan'))), float(vals.get(2, float('nan')))
+
+    def park_midscale(self, target_v=None, tol_v=0.8, max_iter=10) -> None:
+        """Stop wavegen and hold both tip-tilt axes at mid-travel (~50 V).
+
+        Binding: idle / R=0 must sit at +50 VDC so modulation swings around mid
+        scale and PWFS pupil centering is preserved. Uses ``SVA`` with servo
+        off (``SVO`` on blocks SVA with GCS 303 on this E-518).
+        """
+        if not self._gcs.connected:
+            return
+        target = float(self._park_v if target_v is None else target_v)
+        g = self._gcs
+        g.set('WGO 1 0 2 0 3 0', check_err=False)
+        g.set('WSL 1 0 2 0 3 0', check_err=False)
+        g.set('SVO A 0 B 0 C 0', check_err=False)
+        time.sleep(0.15)
+        # Seed near mid: on this E-518, SVA≈55 → VOL≈50 (≈0.9 V/V).
+        cmd_a = 55.0
+        cmd_b = 55.0
+        g.set('SVA A %.4f B %.4f' % (cmd_a, cmd_b), check_err=False)
+        time.sleep(0.45)
+        for _ in range(int(max_iter)):
+            a, b = self._read_vol_ab()
+            if not (math.isfinite(a) and math.isfinite(b)):
+                time.sleep(0.2)
+                continue
+            if abs(a - target) <= tol_v and abs(b - target) <= tol_v:
+                break
+            # Limited step — avoid winding SVA to the rail on a bad sample.
+            step_a = max(-3.0, min(3.0, -0.9 * (a - target)))
+            step_b = max(-3.0, min(3.0, -0.9 * (b - target)))
+            cmd_a = min(70.0, max(40.0, cmd_a + step_a))
+            cmd_b = min(70.0, max(40.0, cmd_b + step_b))
+            g.set('SVA A %.4f B %.4f' % (cmd_a, cmd_b), check_err=False)
+            time.sleep(0.3)
+        self._park_sva = [cmd_a, cmd_b]
+        # Leave SVO off so VOL holds the parked mid-scale voltage.
+        self._modulating = False
+        self._parked = True
+        self._wave_n_pts = 0
+        self._wave_freq_hz = 0.0
+        self._table_vpp_a = 0.0
+        self._table_vpp_b = 0.0
+
+    def _ensure_servo_for_wavegen(self) -> None:
+        """Enable tip/tilt servos before starting wavegen output."""
+        self._gcs.set('SVO A 1 B 1 C 0', check_err=False)
+        self._parked = False
 
     def _query_servo_dt(self) -> float:
         raw = self._gcs.query('SPA? 1 0x0E000200', wait_s=0.6)
@@ -228,23 +291,23 @@ class PiE518Modulator:
             raise PiGcsError('Frequency must be > 0')
         cx, cy = float(self._center[0]), float(self._center[1])
         if r == 0.0:
-            self.stop_modulation()
-            self._wave_n_pts = 0
-            self._wave_freq_hz = 0.0
-            self._table_vpp_a = 0.0
-            self._table_vpp_b = 0.0
+            # No mrad bias when idle — park both axes at mid-travel (+50 V).
+            self.park_midscale()
             return
         dt = float(self._servo_dt) * float(self._wtr)
         n_pts = int(round((1.0 / f) / dt))
         n_pts = max(32, min(n_pts, 8000))
-        self._gcs.set('WGO 1 0 2 0 3 0')
-        self._gcs.set('WCL 1 2 3')
+        self._gcs.set('WGO 1 0 2 0 3 0', check_err=False)
+        self._gcs.set('WCL 1 2 3', check_err=False)
+        self._ensure_servo_for_wavegen()
         # Circular: A ≈ cos (SIN phase π/2), B ≈ sin (phase 0).
+        # Tables are centered at calib mid (~50 V); Vpp grows with |R|.
         vpp_a = self._load_sin_p(1, r, cx, phase_rad=math.pi / 2.0, n_pts=n_pts)
         vpp_b = self._load_sin_p(2, r, cy, phase_rad=0.0, n_pts=n_pts)
         self._gcs.set('WSL 1 1 2 2')
         self._gcs.set('WGO 1 1 2 1 3 0')
         self._modulating = True
+        self._parked = False
         self._wave_n_pts = int(n_pts)
         self._wave_freq_hz = 1.0 / (float(n_pts) * dt)
         self._table_vpp_a = float(vpp_a)
@@ -266,10 +329,10 @@ class PiE518Modulator:
         return float(amp)
 
     def stop_modulation(self) -> None:
+        """Stop wavegen and park both axes at mid-travel (+50 V)."""
         if not self._gcs.connected:
             return
-        self._gcs.set('WGO 1 0 2 0 3 0')
-        self._modulating = False
+        self.park_midscale()
 
     # --- public modulator API (plico / Prisma shaped) ---
 
@@ -313,6 +376,8 @@ class PiE518Modulator:
             modulatorFrequencyInHz=self.getFrequencyInHz(),
             modulatorCenterInMilliRad=self.getCenterInMilliRad(),
             modulating=self._modulating,
+            parked=self._parked,
+            park_voltage_v=self._park_v,
             host=self._host,
             port=self._port,
             serial_number=self._serial,
@@ -434,6 +499,9 @@ class PiE518Modulator:
                 vol_a=float(vol.get(1, float('nan'))),
                 vol_b=float(vol.get(2, float('nan'))),
                 wavegen_running=bool(running),
+                parked=bool(self._parked),
+                mode=('PARKED@%.0fV' % self._park_v) if self._parked else (
+                    'MODULATING' if running or self._modulating else 'IDLE'),
                 n_pts=int(self._wave_n_pts),
                 radius_mrad=float(self._radius),
                 cmd_freq_hz=float(self._freq),

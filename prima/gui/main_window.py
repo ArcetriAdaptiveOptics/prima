@@ -792,10 +792,11 @@ class MainWindow(QMainWindow):
                     pass
             rb = mod.getControllerReadback()
             wgo = 'ON' if rb.wavegen_running else 'OFF'
+            mode = getattr(rb, 'mode', '—')
             self._mod_gcs_label.setText(
-                'E-518: A=%.2f Vpp  B=%.2f Vpp  f=%.2f Hz\n'
+                'E-518 %s: A=%.2f Vpp  B=%.2f Vpp  f=%.2f Hz\n'
                 'VOL A=%.1f B=%.1f  WGO=%s' % (
-                    rb.vpp_a, rb.vpp_b, rb.freq_hz,
+                    mode, rb.vpp_a, rb.vpp_b, rb.freq_hz,
                     rb.vol_a, rb.vol_b, wgo))
         except Exception as e:
             self._mod_gcs_label.setText('E-518 readback error: %s' % e)
