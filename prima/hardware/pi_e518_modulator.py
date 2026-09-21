@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import threading
+import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -89,13 +90,24 @@ class PiE518Modulator:
         with self._lock:
             try:
                 self._gcs.connect()
-                idn = self._gcs.idn()
+                # E-518 often keeps a single TCP client; a stale peer can
+                # leave the first replies empty until we reconnect.
+                idn = ''
+                for attempt in range(3):
+                    idn = self._gcs.idn()
+                    if idn and ('E-518' in idn or 'PI' in idn.upper()):
+                        break
+                    self._gcs.close()
+                    time.sleep(0.35 * (attempt + 1))
+                    self._gcs.connect()
             except (OSError, GcsTcpError) as exc:
                 raise PiGcsError(
                     'Cannot open E-518 GCS at %s:%s: %s'
                     % (self._host, self._port, exc)) from exc
-            if 'E-518' not in idn and 'PI' not in idn.upper():
-                raise PiGcsError('Unexpected *IDN? reply: %r' % idn)
+            if not idn or ('E-518' not in idn and 'PI' not in idn.upper()):
+                raise PiGcsError(
+                    'Unexpected *IDN? reply: %r '
+                    '(close other Drop1/GCS sessions and retry)' % idn)
             try:
                 self._set_up_controller()
             except (GcsTcpError, PiGcsError) as exc:

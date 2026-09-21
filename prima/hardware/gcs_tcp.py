@@ -100,6 +100,13 @@ class GcsTcp:
                 pass
         return buf.decode(errors='replace')
 
+    def drain(self, wait_s: float = 0.25) -> str:
+        """Discard any stale bytes left on the TCP session."""
+        try:
+            return self._recv_until_idle(idle_s=0.05, max_s=wait_s)
+        except Exception:
+            return ''
+
     def query(self, command: str, wait_s: float = 0.35) -> str:
         for attempt in range(3):
             try:
@@ -147,4 +154,16 @@ class GcsTcp:
         return 0
 
     def idn(self) -> str:
-        return self.query('*IDN?', wait_s=1.0).strip()
+        """``*IDN?`` with drain + reconnect retries (E-518 is often single-client)."""
+        last = ''
+        for attempt in range(4):
+            try:
+                self.drain(0.15)
+                last = self.query('*IDN?', wait_s=1.2).strip()
+                if last:
+                    return last
+            except GcsTcpError:
+                last = ''
+            self._reconnect()
+            time.sleep(0.2 * (attempt + 1))
+        return last

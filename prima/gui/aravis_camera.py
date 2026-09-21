@@ -35,21 +35,49 @@ class AravisLiveCamera:
         self._stop = threading.Event()
 
         Aravis.update_device_list()
-        self._cam = Aravis.Camera.new(self._ip)
-        if self._cam is None:
-            raise RuntimeError('Aravis could not open camera at %s' % self._ip)
-        try:
-            self._cam.gv_set_packet_size(int(packet_size))
-        except Exception:
-            pass
-        try:
-            self._cam.set_string('AcquisitionMode', 'Continuous')
-        except Exception:
-            pass
-        self._stream = self._cam.create_stream(None, None)
-        if self._stream is None:
-            raise RuntimeError('Aravis create_stream failed for %s' % self._ip)
-        # Do not touch packet-socket property (missing on some Aravis builds).
+        self._cam = None
+        self._stream = None
+        self._dev = None
+        last_err = None
+        # Retry: prior GUI / crashed owner may still hold GigE control for ~1–3 s.
+        for attempt in range(6):
+            try:
+                self._cam = Aravis.Camera.new(self._ip)
+                if self._cam is None:
+                    raise RuntimeError(
+                        'Aravis could not open camera at %s' % self._ip)
+                self._dev = self._cam.get_device()
+                if self._dev is not None and hasattr(self._dev, 'is_controller'):
+                    if not self._dev.is_controller():
+                        try:
+                            self._dev.take_control()
+                        except Exception as exc:
+                            raise RuntimeError(
+                                'Camera control busy (another process?). '
+                                'Close other prima-gui / Vision apps and retry. '
+                                '(%s)' % exc) from exc
+                try:
+                    self._cam.gv_set_packet_size(int(packet_size))
+                except Exception:
+                    pass
+                try:
+                    self._cam.set_string('AcquisitionMode', 'Continuous')
+                except Exception:
+                    pass
+                self._stream = self._cam.create_stream(None, None)
+                if self._stream is None:
+                    raise RuntimeError(
+                        'Aravis create_stream failed for %s' % self._ip)
+                break
+            except Exception as exc:
+                last_err = exc
+                self._safe_leave()
+                time.sleep(0.4 * (attempt + 1))
+        else:
+            raise RuntimeError(
+                'Aravis open failed for %s after retries: %s'
+                % (self._ip, last_err))
+
         payload = self._cam.get_payload()
         for _ in range(int(n_buffers)):
             self._stream.push_buffer(Aravis.Buffer.new_allocate(payload))
@@ -62,6 +90,24 @@ class AravisLiveCamera:
                     break
             time.sleep(0.05)
 
+    def _safe_leave(self):
+        try:
+            if self._cam is not None:
+                try:
+                    self._cam.stop_acquisition()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        try:
+            if self._dev is not None and hasattr(self._dev, 'leave_control'):
+                self._dev.leave_control()
+        except Exception:
+            pass
+        self._stream = None
+        self._cam = None
+        self._dev = None
+
     def _start_acquisition(self):
         self._cam.start_acquisition()
         self._running = True
@@ -73,6 +119,8 @@ class AravisLiveCamera:
     def _grab_loop(self):
         Aravis = self._Aravis
         while not self._stop.is_set():
+            if self._stream is None:
+                break
             buf = self._stream.timeout_pop_buffer(500000)
             if buf is None:
                 continue
@@ -84,17 +132,17 @@ class AravisLiveCamera:
                     with self._mutex:
                         self._last = arr.copy()
             finally:
-                self._stream.push_buffer(buf)
+                try:
+                    self._stream.push_buffer(buf)
+                except Exception:
+                    pass
 
     def close(self):
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None
-        try:
-            self._cam.stop_acquisition()
-        except Exception:
-            pass
+        self._safe_leave()
         self._running = False
 
     def name(self):

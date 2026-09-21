@@ -18,7 +18,7 @@ from prima.gui.branding import build_brand_row, install_watermark
 from prima.gui.sync_dialog import SyncDialog
 from prima.gui.live_clients import try_connect_live, demo_pair
 from prima.gui.metrology_views import MetrologyViews
-from prima.demo.backends import DemoModulator
+from prima.demo.backends import DemoModulator, DemoCamera
 from prima.metrology.engine import (
     MetrologyEngine, MODULATION_GAIN_PRESETS_MRAD)
 from prima.metrology.types.mask import CircularMask
@@ -484,90 +484,116 @@ class MainWindow(QMainWindow):
 
     # --- backends ---
 
+    def _release_live_backends(self):
+        """Drop existing Aravis / GCS owners so Connect live can reclaim them."""
+        old_cam = getattr(self, '_camera', None)
+        old_mod = getattr(self, '_modulator', None)
+        # Swap to demo first so the tick timer never hits a half-closed device.
+        demo_cam, demo_mod = demo_pair(512, 512)
+        self._camera = demo_cam
+        self._modulator = demo_mod
+        try:
+            self._engine.rebind(camera=demo_cam, modulator=demo_mod)
+        except Exception:
+            pass
+        if old_mod is not None and hasattr(old_mod, 'close') and not isinstance(
+                old_mod, DemoModulator):
+            try:
+                old_mod.close()
+            except Exception:
+                pass
+        if old_cam is not None and hasattr(old_cam, 'close') and not isinstance(
+                old_cam, DemoCamera):
+            try:
+                old_cam.close()
+            except Exception:
+                pass
+        # Brief pause so GigE control / E-518 TCP release before reopen.
+        from time import sleep
+        sleep(0.35)
+
     def _is_live_modulator(self):
         return (
             self._modulator is not None
             and not isinstance(self._modulator, DemoModulator))
 
     def _on_connect_live(self):
-        cam, mod, errors = try_connect_live()
-        live_mod = None
-        if mod is not None:
-            try:
-                _ = mod.getStatus()
-                live_mod = mod
-            except Exception as e:
-                errors.append('modulator(probe): %s' % e)
-                live_mod = None
-        if cam is None and live_mod is None:
-            QMessageBox.warning(
-                self, 'Connect failed',
-                'No live hardware.\n' + '\n'.join(errors)
-                + '\n\nExpected: Aravis Manta @192.168.30.189 and '
-                  'direct PI GCS @192.168.30.190:50000.')
-            return
-        # Close previous direct-PI session if replacing.
-        old = self._modulator
-        if (
-            live_mod is not None
-            and old is not None
-            and old is not live_mod
-            and hasattr(old, 'close')
-            and not isinstance(old, DemoModulator)
-        ):
-            try:
-                old.close()
-            except Exception:
-                pass
-        if cam is not None:
-            self._camera = cam
-        if live_mod is not None:
-            self._modulator = live_mod
-        self._engine.rebind(
-            camera=self._camera if cam else None,
-            modulator=live_mod if live_mod is not None else None)
-        self._using_live = True
-
-        def _mod_name(m):
-            if m is None:
-                return 'demo (not connected)'
-            if isinstance(m, DemoModulator):
-                return 'demo'
-            if hasattr(m, 'name') and callable(m.name):
+        self._btn_connect.setEnabled(False)
+        self._status.showMessage('Connecting Aravis + E-518…')
+        QApplication.processEvents()
+        try:
+            self._release_live_backends()
+            cam, mod, errors = try_connect_live()
+            live_mod = None
+            if mod is not None:
                 try:
-                    return m.name()
-                except Exception:
-                    pass
-            return type(m).__name__
+                    _ = mod.getStatus()
+                    live_mod = mod
+                except Exception as e:
+                    errors.append('modulator(probe): %s' % e)
+                    try:
+                        mod.close()
+                    except Exception:
+                        pass
+                    live_mod = None
+            if cam is None and live_mod is None:
+                QMessageBox.warning(
+                    self, 'Connect failed',
+                    'No live hardware.\n' + '\n'.join(errors)
+                    + '\n\nExpected: Aravis Manta @192.168.30.189 and '
+                      'direct PI GCS @192.168.30.190:50000.\n'
+                      'Tip: close any other Drop1/Vision session, wait ~3 s, '
+                      'then Connect live again.')
+                self._using_live = False
+                self._server_status.setText(
+                    'Connect failed — ' + ('; '.join(errors) or 'no devices'))
+                return
+            if cam is not None:
+                self._camera = cam
+            if live_mod is not None:
+                self._modulator = live_mod
+            self._engine.rebind(
+                camera=self._camera if cam else None,
+                modulator=live_mod if live_mod is not None else None)
+            self._using_live = True
 
-        mod_label = _mod_name(live_mod if live_mod is not None else self._modulator)
-        if live_mod is None:
-            mod_label = 'DEMO — E-518 GCS unreachable'
-        self._server_status.setText(
-            'LIVE  cam=%s  mod=%s%s' % (
-                cam.name() if cam else 'demo',
-                mod_label,
-                ('\n' + '; '.join(errors)) if errors else ''))
-        if live_mod is not None:
-            self._pull_mod_to_spins()
-            # Push current GUI settings once so E-518 starts modulating.
-            self._apply_modulator()
-            self._status.showMessage(
-                'Connected — Aravis Manta + direct E-518 GCS')
-        else:
-            self._status.showMessage(
-                'Camera live; modulator still DEMO (E-518 GCS unreachable)')
-        self._sync_exposure_spin_enabled()
-        if self._lock_exp.isChecked():
-            self._apply_exp_from_freq()
+            def _mod_name(m):
+                if m is None:
+                    return 'demo (not connected)'
+                if isinstance(m, DemoModulator):
+                    return 'demo'
+                if hasattr(m, 'name') and callable(m.name):
+                    try:
+                        return m.name()
+                    except Exception:
+                        pass
+                return type(m).__name__
+
+            mod_label = _mod_name(
+                live_mod if live_mod is not None else self._modulator)
+            if live_mod is None:
+                mod_label = 'DEMO — E-518 GCS unreachable'
+            self._server_status.setText(
+                'LIVE  cam=%s  mod=%s%s' % (
+                    cam.name() if cam else 'demo',
+                    mod_label,
+                    ('\n' + '; '.join(errors)) if errors else ''))
+            if live_mod is not None:
+                self._pull_mod_to_spins()
+                self._apply_modulator()
+                self._status.showMessage(
+                    'Connected — Aravis Manta + direct E-518 GCS')
+            else:
+                self._status.showMessage(
+                    'Camera live; modulator still DEMO (E-518 GCS unreachable)')
+            self._sync_exposure_spin_enabled()
+            if self._lock_exp.isChecked():
+                self._apply_exp_from_freq()
+        finally:
+            self._btn_connect.setEnabled(True)
 
     def _on_use_demo(self):
-        old = self._modulator
-        if old is not None and hasattr(old, 'close') and not isinstance(old, DemoModulator):
-            try:
-                old.close()
-            except Exception:
-                pass
+        self._release_live_backends()
         cam, mod = demo_pair(512, 512)
         self._camera = cam
         self._modulator = mod
