@@ -22,6 +22,7 @@ from prima.demo.backends import DemoModulator, DemoCamera
 from prima.metrology.engine import (
     MetrologyEngine, MODULATION_GAIN_PRESETS_MRAD)
 from prima.metrology.types.mask import CircularMask
+from prima.hardware import MAX_SAFE_RADIUS_MRAD
 
 
 pg.setConfigOptions(imageAxisOrder='row-major', antialias=True)
@@ -341,10 +342,13 @@ class MainWindow(QMainWindow):
         self._freq_spin.setSuffix(' Hz')
         self._freq_spin.setValue(20.0)
         self._radius_spin = QDoubleSpinBox()
-        self._radius_spin.setRange(0.0, 50.0)
+        self._radius_spin.setRange(0.0, float(MAX_SAFE_RADIUS_MRAD))
         self._radius_spin.setDecimals(3)
         self._radius_spin.setSuffix(' mrad')
         self._radius_spin.setValue(1.5)
+        self._radius_spin.setToolTip(
+            'Modulation radius (safe max %.0f mrad for S-334/E-518)'
+            % MAX_SAFE_RADIUS_MRAD)
         self._cx_spin = QDoubleSpinBox()
         self._cy_spin = QDoubleSpinBox()
         for s in (self._cx_spin, self._cy_spin):
@@ -684,6 +688,7 @@ class MainWindow(QMainWindow):
             self._engine.set_modulation_center_mrad(
                 [self._cx_spin.value(), self._cy_spin.value()])
             self._sync_mod_to_camera()
+            self._last_mod_error = None
             if self._is_live_modulator():
                 self._status.showMessage(
                     'E-518 modulator: f=%.2f Hz  R=%.3f mrad' % (
@@ -694,6 +699,14 @@ class MainWindow(QMainWindow):
                     'Connect live for E-518' % (
                         self._freq_spin.value(), self._radius_spin.value()))
         except Exception as e:
+            msg = str(e)
+            # Debounce identical refuse dialogs (spin/timer used to spam and
+            # block further radius changes while the modal was up).
+            if getattr(self, '_last_mod_error', None) == msg:
+                self._status.showMessage('Modulator apply failed: %s' % msg)
+                return
+            self._last_mod_error = msg
+            self._status.showMessage('Modulator apply failed: %s' % msg)
             QMessageBox.warning(
                 self, 'Modulator apply failed',
                 'Could not push modulation to backend:\n%s' % e)

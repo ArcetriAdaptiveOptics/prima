@@ -7,6 +7,7 @@ available separately.
 from __future__ import annotations
 
 import math
+import os
 import threading
 import time
 from types import SimpleNamespace
@@ -20,8 +21,9 @@ DEFAULT_E518_HOST = '192.168.30.190'
 DEFAULT_E518_PORT = 50000
 DEFAULT_SERIAL = '110032051'
 
-# Safe Drop-1 ceiling (mrad). Hardware tests stay well below this.
-MAX_SAFE_RADIUS_MRAD = 5.0
+# Prisma pygo_gui gain presets go to 40 mrad; SN 110032051 calib maps
+# R=40 → ~4–96 V (inside soft 0–100 V). Override with PRIMA_MOD_MAX_MRAD.
+MAX_SAFE_RADIUS_MRAD = float(os.environ.get('PRIMA_MOD_MAX_MRAD', '40'))
 
 # Prisma calib/modulator/pi_calibration.py SN 110032051
 _CALIB = {
@@ -202,16 +204,20 @@ class PiE518Modulator:
 
     # --- modulation ---
 
-    def _apply(self) -> None:
-        if not self._setup_done:
-            raise PiGcsError('E-518 not set up')
-        r = float(self._radius)
+    def _check_radius(self, radius_mrad: float) -> float:
+        r = float(radius_mrad)
         if r < 0:
             raise PiGcsError('Radius must be >= 0')
         if r > self._max_radius:
             raise PiGcsError(
                 'Refusing radius %.3f mrad > safe max %.3f mrad'
                 % (r, self._max_radius))
+        return r
+
+    def _apply(self) -> None:
+        if not self._setup_done:
+            raise PiGcsError('E-518 not set up')
+        r = self._check_radius(self._radius)
         f = float(self._freq)
         if f <= 0:
             raise PiGcsError('Frequency must be > 0')
@@ -258,7 +264,10 @@ class PiE518Modulator:
 
     def setRadiusInMilliRad(self, radiusInMilliRad):
         with self._lock:
-            self._radius = float(radiusInMilliRad)
+            # Validate before mutating so a refuse cannot stick and block
+            # later frequency / center applies.
+            new_r = self._check_radius(radiusInMilliRad)
+            self._radius = new_r
             self._apply()
 
     def getRadiusInMilliRad(self):
