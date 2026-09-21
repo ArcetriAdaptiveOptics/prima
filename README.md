@@ -13,7 +13,7 @@ New Arcetri AO packaging/glue project (not a fork of prisma).
 |------|--------|------|
 | WFS camera | Allied Vision **Manta G-419** (`192.168.30.189`) | pysilico `model=avt` |
 | WFS camera (alt) | Allied Vision **Alvium G1** | same `avt` path — conf `camera-alvium-g1.conf`; Drop 1 swap or Drop 3 FP |
-| PWFS modulator | PI **S-334** @ E-518 (`192.168.30.190`) | `plico_dm` `piS334Modulator` |
+| PWFS modulator | PI **S-334** @ E-518 (`192.168.29.117`) | `plico_dm` `piS334Modulator` |
 | Science DM | BMC **Multi-DM 5.5 µm** (140 act, USB) | `plico_dm_server` `bmc` / `bmcMultiDM` |
 | Tip-tilt | S-334 | Drop 2 modulator; Drop 3 TT DM + FP camera |
 
