@@ -10,5 +10,5 @@ Path=/home/labot/git/prima
 Terminal=false
 StartupNotify=true
 StartupWMClass=prima-gui
-Categories=Science;
+Categories=Science;Education;
 Keywords=prima;pwfs;ao;manta;aravis;modulator;

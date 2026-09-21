@@ -27,8 +27,10 @@ New Arcetri AO packaging/glue project (not a fork of prisma).
 
 ## Drop 1 — PWFS metrology
 
-**Desktop (x2go):** double-click **Prima Drop 1** on the Desktop (or Applications menu).  
-That runs `scripts/start-drop1-live-gui.sh` → Aravis Manta @ `192.168.30.189`, and wires the E-518 modulator if `plico_dm_server` is listening on `:7030`.
+**Desktop (x2go):** double-click **Prima Drop 1** on the Desktop (or open it from the Applications menu).  
+That runs `scripts/start-drop1-live-gui.sh` → `prima-gui --live-aravis --aravis-ip 192.168.30.189` (Manta).
+
+In the GUI, lab modulator needs **Start** (lab profile) then **Connect live** once `plico_dm_server` can stay up on `:7030`. **Note:** the PI GCS2 shared library (`libpi_pi_gcs2.so` from the PI E-518 SDK) is still missing on this laptop, so real E-518 via `plico_dm_server` / `pi_gcs` will not start until that `.so` is installed — camera live works without it.
 
 ```bash
 source ~/git/.venv-prima/bin/activate
