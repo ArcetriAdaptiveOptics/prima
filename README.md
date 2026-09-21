@@ -27,12 +27,31 @@ New Arcetri AO packaging/glue project (not a fork of prisma).
 
 ## Drop 1 — PWFS metrology
 
+**Desktop (x2go):** double-click **Prima Drop 1** on the Desktop (or Applications menu).  
+That runs `scripts/start-drop1-live-gui.sh` → Aravis Manta @ `192.168.30.189`, and wires the E-518 modulator if `plico_dm_server` is listening on `:7030`.
+
 ```bash
 source ~/git/.venv-prima/bin/activate
 pip install -e ~/git/prima
+
+# Live bench GUI (same as the desktop launcher)
+./scripts/start-drop1-live-gui.sh
+# or:
+prima-gui --live-aravis --aravis-ip 192.168.30.189
+
+# Sim stack (no camera/hardware)
 ./scripts/start-phase1-sim.sh
 prima-gui
 python scripts/smoke_drop1_metrology.py
+```
+
+Re-install the launcher after a fresh clone:
+
+```bash
+cp ~/git/prima/scripts/Prima-Drop1.desktop ~/Desktop/
+cp ~/git/prima/scripts/Prima-Drop1.desktop ~/.local/share/applications/
+chmod +x ~/Desktop/Prima-Drop1.desktop ~/git/prima/scripts/start-drop1-live-gui.sh
+gio set ~/Desktop/Prima-Drop1.desktop metadata::trusted true
 ```
 
 ## Drop 2 — BMC Multi-DM + DaoPrima
