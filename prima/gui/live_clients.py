@@ -102,20 +102,46 @@ def connect_camera(host=DEFAULT_CAMERA_HOST, port=DEFAULT_CAMERA_PORT, timeout_s
     return LiveCameraWrapper(client, name='pysilico@%s:%s' % (host, port))
 
 
-def connect_modulator(host=DEFAULT_MODULATOR_HOST, port=DEFAULT_MODULATOR_PORT):
+def connect_modulator(host=DEFAULT_MODULATOR_HOST, port=DEFAULT_MODULATOR_PORT,
+                      timeout_s=2.0):
+    """Connect ModulatorClient; fail fast if nothing listens on host:port."""
+    import socket
     import plico_dm
+    sock = socket.create_connection((host, int(port)), timeout=float(timeout_s))
+    sock.close()
     return plico_dm.modulator(host, int(port))
+
+
+def try_connect_aravis(ip_address='192.168.30.189'):
+    """Open Manta (or other AVT GigE) via Aravis when Vimba/pysilico avt is unavailable."""
+    from prima.gui.aravis_camera import connect_aravis
+    return connect_aravis(ip_address)
 
 
 def try_connect_live(camera_host=DEFAULT_CAMERA_HOST, camera_port=DEFAULT_CAMERA_PORT,
                      modulator_host=DEFAULT_MODULATOR_HOST,
-                     modulator_port=DEFAULT_MODULATOR_PORT):
-    """Return (camera, modulator, errors). Missing sides stay None."""
+                     modulator_port=DEFAULT_MODULATOR_PORT,
+                     aravis_ip='192.168.30.189',
+                     allow_aravis_fallback=True):
+    """Return (camera, modulator, errors). Missing sides stay None.
+
+    Prefers pysilico (Vimba avt). If that fails and ``allow_aravis_fallback``,
+    opens the GigE camera with Aravis so Drop 1 GUI can show live frames
+    without a full Allied Vision Vimba SDK install.
+    """
     cam, mod, errors = None, None, []
     try:
         cam = connect_camera(camera_host, camera_port)
     except Exception as e:
-        errors.append('camera: %s' % e)
+        errors.append('camera(pysilico): %s' % e)
+        if allow_aravis_fallback and aravis_ip:
+            try:
+                cam = try_connect_aravis(aravis_ip)
+                errors.append(
+                    'camera: using Aravis fallback @%s (Vimba/pysilico avt unavailable)'
+                    % aravis_ip)
+            except Exception as e2:
+                errors.append('camera(aravis): %s' % e2)
     try:
         mod = connect_modulator(modulator_host, modulator_port)
     except Exception as e:

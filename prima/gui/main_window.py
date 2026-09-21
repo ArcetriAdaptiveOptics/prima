@@ -19,6 +19,7 @@ from prima.gui.branding import build_brand_row, install_watermark
 from prima.gui.sync_dialog import SyncDialog
 from prima.gui.live_clients import try_connect_live, demo_pair
 from prima.gui.metrology_views import MetrologyViews
+from prima.demo.backends import DemoModulator
 from prima.metrology.engine import (
     MetrologyEngine, MODULATION_GAIN_PRESETS_MRAD)
 from prima.metrology.types.mask import CircularMask
@@ -98,6 +99,11 @@ class MainWindow(QMainWindow):
         self._roi = (0, 0, 512, 512)
         self._sync_dlg = None
         self._measure_enabled = False
+        # Debounce hardware apply while dragging spins (safe for E-518).
+        self._mod_apply_timer = QTimer(self)
+        self._mod_apply_timer.setSingleShot(True)
+        self._mod_apply_timer.setInterval(350)
+        self._mod_apply_timer.timeout.connect(self._apply_modulator)
         self._auto_align_active = False
         self._zernike_to_remove = [2, 3]
 
@@ -267,6 +273,9 @@ class MainWindow(QMainWindow):
         self._btn_start.setObjectName('primary')
         self._btn_stop = QPushButton('Stop')
         self._btn_connect = QPushButton('Connect live')
+        self._btn_connect.setToolTip(
+            'Wire camera + ModulatorClient (E-518 via plico_dm_server :7030). '
+            'Required for real modulation — Aravis-only leaves mod=demo.')
         self._btn_demo = QPushButton('Use demo')
         self._btn_start.clicked.connect(self._on_start_servers)
         self._btn_stop.clicked.connect(self._on_stop_servers)
@@ -280,7 +289,8 @@ class MainWindow(QMainWindow):
         row2.addWidget(self._btn_connect)
         row2.addWidget(self._btn_demo)
         lay.addLayout(row2)
-        self._server_status = QLabel('Demo (in-process)')
+        self._server_status = QLabel(
+            'Demo (in-process) — Start lab + Connect live for E-518')
         self._server_status.setObjectName('muted')
         self._server_status.setWordWrap(True)
         lay.addWidget(self._server_status)
@@ -349,12 +359,16 @@ class MainWindow(QMainWindow):
             s.setRange(-20.0, 20.0)
             s.setDecimals(3)
             s.setSuffix(' mrad')
-        self._freq_spin.valueChanged.connect(self._on_mod_changed)
-        self._radius_spin.valueChanged.connect(self._on_mod_changed)
-        self._cx_spin.valueChanged.connect(self._on_mod_changed)
-        self._cy_spin.valueChanged.connect(self._on_mod_changed)
-        self._btn_apply_mod = QPushButton('Apply')
+        # Frequency alone may drive t_exp lock; radius/center must not.
+        self._freq_spin.valueChanged.connect(self._on_freq_changed)
+        self._radius_spin.valueChanged.connect(self._on_radius_or_center_changed)
+        self._cx_spin.valueChanged.connect(self._on_radius_or_center_changed)
+        self._cy_spin.valueChanged.connect(self._on_radius_or_center_changed)
+        self._btn_apply_mod = QPushButton('Apply to E-518 / modulator')
         self._btn_apply_mod.setObjectName('primary')
+        self._btn_apply_mod.setToolTip(
+            'Push radius/freq/center to the connected ModulatorClient '
+            '(plico_dm_server → piS334Modulator). Spins also auto-apply.')
         self._btn_apply_mod.clicked.connect(self._apply_modulator)
         form.addRow('Frequency', self._freq_spin)
         form.addRow('Radius', self._radius_spin)
@@ -363,7 +377,7 @@ class MainWindow(QMainWindow):
         form.addRow(self._btn_apply_mod)
         self._mod_period_label = QLabel('1/f = 50.00 ms')
         form.addRow('Period', self._mod_period_label)
-        self._mod_live_label = QLabel('R=—  C=—')
+        self._mod_live_label = QLabel('R=—  C=—  (demo until Connect live)')
         self._mod_live_label.setObjectName('muted')
         form.addRow('Readback', self._mod_live_label)
         return box
@@ -483,12 +497,31 @@ class MainWindow(QMainWindow):
             'lab' if self._profile.currentIndex() == 1 else 'sim')
         try:
             st = self._pm.start()
+            dead = [
+                '%s exit=%s' % (n, info.get('exit_code'))
+                for n, info in st.items()
+                if not info.get('running')]
             self._server_status.setText(
-                'cam=%s mod=%s' % (
+                'cam=%s mod=%s%s' % (
                     st.get('camera', {}).get('running'),
-                    st.get('modulator', {}).get('running')))
+                    st.get('modulator', {}).get('running'),
+                    ('\nFAILED: ' + ', '.join(dead)) if dead else ' — connecting…'))
+            if not st.get('modulator', {}).get('running'):
+                mod_tail = st.get('modulator', {}).get('log_tail', '')
+                hint = (
+                    'Modulator server exited. Common lab cause: '
+                    'PI GCS2 C library missing '
+                    '(pi_gcs needs libpi_pi_gcs2.so from PI E-518 SDK). '
+                    'E-518 at 192.168.30.190:50000 may still answer *IDN?.\n\n'
+                    + (mod_tail or ''))
+                QMessageBox.warning(self, 'Modulator server failed', hint)
+                self._status.showMessage(
+                    'Modulator server failed — see dialog / tmp/gui-logs')
+                return
             self._status.showMessage(
-                'Started servers (%s) — use Connect live' % self._pm.profile)
+                'Started servers (%s) — auto Connect live' % self._pm.profile)
+            QTimer.singleShot(1500 if self._pm.profile == 'lab' else 400,
+                              self._on_connect_live)
         except Exception as e:
             QMessageBox.warning(
                 self, 'Start failed',
@@ -496,26 +529,45 @@ class MainWindow(QMainWindow):
 
     def _on_stop_servers(self):
         self._pm.stop()
-        self._server_status.setText('Stopped · demo backends')
+        self._server_status.setText(
+            'Stopped · demo backends — Start lab + Connect live for E-518')
         self._status.showMessage('Servers stopped')
+
+    def _is_live_modulator(self):
+        return (
+            self._modulator is not None
+            and not isinstance(self._modulator, DemoModulator))
 
     def _on_connect_live(self):
         cam, mod, errors = try_connect_live()
-        if cam is None and mod is None:
+        live_mod = None
+        if mod is not None:
+            try:
+                _ = mod.getStatus()
+                live_mod = mod
+            except Exception as e:
+                errors.append('modulator(probe): %s' % e)
+                live_mod = None
+        if cam is None and live_mod is None:
             QMessageBox.warning(
                 self, 'Connect failed',
-                'No live clients.\n' + '\n'.join(errors))
+                'No live clients.\n' + '\n'.join(errors)
+                + '\n\nFor E-518: choose lab profile → Start → Connect live '
+                  '(modulator server must listen on :7030).')
             return
         if cam is not None:
             self._camera = cam
-        if mod is not None:
-            self._modulator = mod
+        if live_mod is not None:
+            self._modulator = live_mod
         self._engine.rebind(
             camera=self._camera if cam else None,
-            modulator=self._modulator if mod else None)
+            modulator=live_mod if live_mod is not None else None)
         self._using_live = True
+
         def _mod_name(m):
             if m is None:
+                return 'demo (not connected)'
+            if isinstance(m, DemoModulator):
                 return 'demo'
             if hasattr(m, 'name') and callable(m.name):
                 try:
@@ -523,13 +575,24 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
             return 'live@7030'
+
+        mod_label = _mod_name(live_mod if live_mod is not None else self._modulator)
+        if live_mod is None:
+            mod_label = 'DEMO — Start lab + Connect for E-518'
         self._server_status.setText(
             'LIVE  cam=%s  mod=%s%s' % (
                 cam.name() if cam else 'demo',
-                _mod_name(mod),
+                mod_label,
                 ('\n' + '; '.join(errors)) if errors else ''))
-        self._pull_mod_to_spins()
-        self._status.showMessage('Connected to live plico clients')
+        if live_mod is not None:
+            self._pull_mod_to_spins()
+            # Push current GUI settings once so E-518 starts modulating.
+            self._apply_modulator()
+            self._status.showMessage(
+                'Connected live modulator — radius/freq auto-apply to E-518')
+        else:
+            self._status.showMessage(
+                'Camera live; modulator still DEMO (no :7030 / Start lab)')
 
     def _on_use_demo(self):
         cam, mod = demo_pair(512, 512)
@@ -537,7 +600,8 @@ class MainWindow(QMainWindow):
         self._modulator = mod
         self._engine = MetrologyEngine(camera=cam, modulator=mod)
         self._using_live = False
-        self._server_status.setText('Demo (in-process)')
+        self._server_status.setText(
+            'Demo (in-process) — Start lab + Connect live for E-518')
         self._apply_modulator()
         self._refresh_pupil_overlay()
         self._status.showMessage('Switched to in-process demo backends')
@@ -571,13 +635,22 @@ class MainWindow(QMainWindow):
         if self._lock_exp.isChecked():
             self._apply_exp_from_freq()
 
-    def _on_mod_changed(self, _=None):
+    def _on_freq_changed(self, _=None):
         f = self._freq_spin.value()
-        self._mod_period_label.setText('1/f = %.2f ms' % (1000.0 / f))
+        self._mod_period_label.setText('1/f = %.2f ms' % (1000.0 / max(f, 1e-6)))
+        # Only frequency drives the exposure lock — never radius/center.
         if self._lock_exp.isChecked():
             self._apply_exp_from_freq()
-        self._sync_mod_to_camera()
+        self._schedule_mod_apply()
         self._update_timing_labels()
+
+    def _on_radius_or_center_changed(self, _=None):
+        # Radius/center must NOT reset exposure (even with lock checked).
+        self._schedule_mod_apply()
+        self._update_timing_labels()
+
+    def _schedule_mod_apply(self):
+        self._mod_apply_timer.start()
 
     def _on_roi_changed(self, _=None):
         self._roi = (
@@ -592,18 +665,30 @@ class MainWindow(QMainWindow):
         self._exp_spin.blockSignals(True)
         self._exp_spin.setValue(exp_ms)
         self._exp_spin.blockSignals(False)
-        self._engine.set_exposure_ms(exp_ms)
+        # Camera only — do not call engine.set_exposure_ms here (it would
+        # re-set modulator frequency and fight spinning widgets).
         self._camera.setExposureTime(exp_ms)
 
     def _apply_modulator(self):
-        self._engine.set_modulation_frequency_hz(self._freq_spin.value())
-        self._engine.set_modulation_radius_mrad(self._radius_spin.value())
-        self._engine.set_modulation_center_mrad(
-            [self._cx_spin.value(), self._cy_spin.value()])
-        self._sync_mod_to_camera()
-        self._status.showMessage(
-            'Modulator: f=%.2f Hz  R=%.3f mrad' % (
-                self._freq_spin.value(), self._radius_spin.value()))
+        try:
+            self._engine.set_modulation_frequency_hz(self._freq_spin.value())
+            self._engine.set_modulation_radius_mrad(self._radius_spin.value())
+            self._engine.set_modulation_center_mrad(
+                [self._cx_spin.value(), self._cy_spin.value()])
+            self._sync_mod_to_camera()
+            if self._is_live_modulator():
+                self._status.showMessage(
+                    'E-518 modulator: f=%.2f Hz  R=%.3f mrad' % (
+                        self._freq_spin.value(), self._radius_spin.value()))
+            else:
+                self._status.showMessage(
+                    'Demo modulator only (f=%.2f Hz R=%.3f) — '
+                    'Start lab + Connect live for E-518' % (
+                        self._freq_spin.value(), self._radius_spin.value()))
+        except Exception as e:
+            QMessageBox.warning(
+                self, 'Modulator apply failed',
+                'Could not push modulation to backend:\n%s' % e)
 
     def _sync_mod_to_camera(self):
         if hasattr(self._camera, 'set_modulation'):
@@ -617,9 +702,11 @@ class MainWindow(QMainWindow):
         if btn is None:
             return
         g = float(btn.property('gain_mrad'))
+        # setValue triggers _on_radius_or_center_changed → apply; avoid double.
+        self._radius_spin.blockSignals(True)
         self._radius_spin.setValue(g)
-        self._engine.set_modulation_radius_mrad(g)
-        self._sync_mod_to_camera()
+        self._radius_spin.blockSignals(False)
+        self._apply_modulator()
         self._status.showMessage('Modulation gain preset %.3g mrad' % g)
 
     def _update_timing_labels(self):
