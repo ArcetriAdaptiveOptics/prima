@@ -83,6 +83,11 @@ class PiE518Modulator:
         self._modulating = False
         self._servo_dt = None
         self._wtr = 1
+        self._wave_n_pts = 0
+        self._wave_freq_hz = 0.0
+        self._table_vpp_a = 0.0
+        self._table_vpp_b = 0.0
+        self._last_vol = {1: float('nan'), 2: float('nan'), 3: float('nan')}
         if connect:
             self.connect()
 
@@ -224,6 +229,10 @@ class PiE518Modulator:
         cx, cy = float(self._center[0]), float(self._center[1])
         if r == 0.0:
             self.stop_modulation()
+            self._wave_n_pts = 0
+            self._wave_freq_hz = 0.0
+            self._table_vpp_a = 0.0
+            self._table_vpp_b = 0.0
             return
         dt = float(self._servo_dt) * float(self._wtr)
         n_pts = int(round((1.0 / f) / dt))
@@ -231,17 +240,21 @@ class PiE518Modulator:
         self._gcs.set('WGO 1 0 2 0 3 0')
         self._gcs.set('WCL 1 2 3')
         # Circular: A ≈ cos (SIN phase π/2), B ≈ sin (phase 0).
-        self._load_sin_p(1, r, cx, phase_rad=math.pi / 2.0, n_pts=n_pts)
-        self._load_sin_p(2, r, cy, phase_rad=0.0, n_pts=n_pts)
+        vpp_a = self._load_sin_p(1, r, cx, phase_rad=math.pi / 2.0, n_pts=n_pts)
+        vpp_b = self._load_sin_p(2, r, cy, phase_rad=0.0, n_pts=n_pts)
         self._gcs.set('WSL 1 1 2 2')
         self._gcs.set('WGO 1 1 2 1 3 0')
         self._modulating = True
+        self._wave_n_pts = int(n_pts)
+        self._wave_freq_hz = 1.0 / (float(n_pts) * dt)
+        self._table_vpp_a = float(vpp_a)
+        self._table_vpp_b = float(vpp_b)
 
     def _load_sin_p(self, table_id, amp_mrad, cen_mrad, phase_rad, n_pts):
         axis = 'A' if int(table_id) == 1 else 'B'
         peak = self._mrad_to_gcs(cen_mrad + amp_mrad, axis)
         valley = self._mrad_to_gcs(cen_mrad - amp_mrad, axis)
-        amp = peak - valley
+        amp = peak - valley  # GCS SIN_P amplitude = peak-to-peak volts
         offset = valley
         start = int(round(phase_rad / (2.0 * math.pi) * n_pts)) % n_pts
         center_pt = n_pts // 2
@@ -250,6 +263,7 @@ class PiE518Modulator:
             int(table_id), int(n_pts), float(amp), float(offset),
             int(n_pts), int(start), int(center_pt))
         self._gcs.set(cmd)
+        return float(amp)
 
     def stop_modulation(self) -> None:
         if not self._gcs.connected:
@@ -331,6 +345,99 @@ class PiE518Modulator:
                     except ValueError:
                         pass
             return bool(vals.get(1, 0) and vals.get(2, 0))
+
+    def _parse_vol(self, raw: str) -> dict:
+        vals = {}
+        for part in raw.replace('\n', ' ').split():
+            if '=' not in part:
+                continue
+            k, v = part.split('=', 1)
+            try:
+                vals[int(k)] = float(v)
+            except ValueError:
+                pass
+        return vals
+
+    def read_vol(self) -> dict:
+        """Instantaneous axis voltages from ``VOL?`` (GCS channels 1/2/3)."""
+        with self._lock:
+            if not self._gcs.connected:
+                return dict(self._last_vol)
+            raw = self._gcs.query('VOL?', wait_s=0.25)
+            vals = self._parse_vol(raw)
+            if vals:
+                self._last_vol.update(vals)
+            return dict(self._last_vol)
+
+    def refresh_wave_table_readback(self) -> None:
+        """Measure Vpp + freq from controller wave table via ``GWD?``.
+
+        E-518 returns the full recorder buffer (~0.5 s); call from a worker
+        thread / slow timer, not the GUI frame tick.
+        """
+        with self._lock:
+            if not self._gcs.connected or self._wave_n_pts <= 0:
+                return
+            n_want = int(self._wave_n_pts)
+            raw = self._gcs.query('GWD? 1', wait_s=3.0)
+        sample_time = None
+        for line in raw.splitlines():
+            if 'SAMPLE_TIME' in line and '=' in line:
+                try:
+                    sample_time = float(line.split('=', 1)[1].strip())
+                except ValueError:
+                    pass
+        body = raw.split('# END_HEADER', 1)[-1]
+        a_vals = []
+        b_vals = []
+        for line in body.splitlines():
+            parts = line.strip().split()
+            if len(parts) < 2:
+                continue
+            try:
+                a_vals.append(float(parts[0]))
+                b_vals.append(float(parts[1]))
+            except ValueError:
+                continue
+            if len(a_vals) >= n_want:
+                break
+        if len(a_vals) < 8:
+            return
+        a = np.asarray(a_vals[:n_want], dtype=float)
+        b = np.asarray(b_vals[:n_want], dtype=float)
+        with self._lock:
+            self._table_vpp_a = float(np.ptp(a))
+            self._table_vpp_b = float(np.ptp(b))
+            if sample_time and sample_time > 0 and n_want > 0:
+                self._wave_freq_hz = 1.0 / (float(n_want) * float(sample_time))
+
+    def getControllerReadback(self):
+        """Live E-518 readback: Vpp (wave table), freq, VOL, WGO."""
+        with self._lock:
+            vol = dict(self._last_vol)
+            try:
+                if self._gcs.connected:
+                    vol = self._parse_vol(self._gcs.query('VOL?', wait_s=0.25))
+                    if vol:
+                        self._last_vol.update(vol)
+            except Exception:
+                pass
+            running = False
+            try:
+                running = self.wavegen_running() if self._gcs.connected else False
+            except Exception:
+                running = bool(self._modulating)
+            return SimpleNamespace(
+                vpp_a=float(self._table_vpp_a),
+                vpp_b=float(self._table_vpp_b),
+                freq_hz=float(self._wave_freq_hz),
+                vol_a=float(vol.get(1, float('nan'))),
+                vol_b=float(vol.get(2, float('nan'))),
+                wavegen_running=bool(running),
+                n_pts=int(self._wave_n_pts),
+                radius_mrad=float(self._radius),
+                cmd_freq_hz=float(self._freq),
+            )
 
 
 def connect_pi_modulator(

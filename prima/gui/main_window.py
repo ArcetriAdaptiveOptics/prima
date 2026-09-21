@@ -186,6 +186,12 @@ class MainWindow(QMainWindow):
         self._align_stop_timer.setSingleShot(True)
         self._align_stop_timer.timeout.connect(self._auto_align_stop)
 
+        # Throttled E-518 GCS readback (GWD is ~0.5 s — not on frame tick).
+        self._mod_gcs_timer = QTimer(self)
+        self._mod_gcs_timer.setInterval(1200)
+        self._mod_gcs_timer.timeout.connect(self._refresh_mod_gcs_readback)
+        self._mod_gcs_timer.start()
+
         self._sync_mod_to_camera()
         self._apply_exp_from_freq()
         self._refresh_pupil_overlay()
@@ -373,9 +379,17 @@ class MainWindow(QMainWindow):
         form.addRow(self._btn_apply_mod)
         self._mod_period_label = QLabel('1/f = 50.00 ms')
         form.addRow('Period', self._mod_period_label)
-        self._mod_live_label = QLabel('R=—  C=—  (demo until Connect live)')
+        self._mod_live_label = QLabel('cmd R=—  C=—')
         self._mod_live_label.setObjectName('muted')
-        form.addRow('Readback', self._mod_live_label)
+        form.addRow('Commanded', self._mod_live_label)
+        self._mod_gcs_label = QLabel(
+            'E-518: Vpp=—  f=—  VOL=—  WGO=—')
+        self._mod_gcs_label.setObjectName('muted')
+        self._mod_gcs_label.setWordWrap(True)
+        self._mod_gcs_label.setToolTip(
+            'Live GCS readback: wave-table Vpp (GWD), frequency from '
+            'table length × controller SAMPLE_TIME, VOL?, WGO?.')
+        form.addRow('E-518 live', self._mod_gcs_label)
         return box
 
     def _build_gain_presets(self):
@@ -751,10 +765,40 @@ class MainWindow(QMainWindow):
         try:
             c = self._modulator.getCenterInMilliRad()
             self._mod_live_label.setText(
-                'R=%.2f  C=%.2f,%.2f' % (
-                    self._modulator.getRadiusInMilliRad(), c[0], c[1]))
+                'cmd R=%.2f mrad  f=%.2f Hz  C=%.2f,%.2f' % (
+                    self._modulator.getRadiusInMilliRad(),
+                    self._modulator.getFrequencyInHz(),
+                    c[0], c[1]))
         except Exception:
             pass
+
+    def _refresh_mod_gcs_readback(self):
+        """Poll E-518 for Vpp / frequency / VOL / WGO (direct GCS only)."""
+        mod = getattr(self, '_modulator', None)
+        if mod is None or isinstance(mod, DemoModulator):
+            self._mod_gcs_label.setText(
+                'E-518: (demo — Connect live for GCS Vpp / f)')
+            return
+        if not hasattr(mod, 'getControllerReadback'):
+            self._mod_gcs_label.setText('E-518: (no GCS readback API)')
+            return
+        try:
+            # Refresh wave-table Vpp/freq from GWD when modulating.
+            if hasattr(mod, 'refresh_wave_table_readback') and getattr(
+                    mod, '_modulating', False):
+                try:
+                    mod.refresh_wave_table_readback()
+                except Exception:
+                    pass
+            rb = mod.getControllerReadback()
+            wgo = 'ON' if rb.wavegen_running else 'OFF'
+            self._mod_gcs_label.setText(
+                'E-518: A=%.2f Vpp  B=%.2f Vpp  f=%.2f Hz\n'
+                'VOL A=%.1f B=%.1f  WGO=%s' % (
+                    rb.vpp_a, rb.vpp_b, rb.freq_hz,
+                    rb.vol_a, rb.vol_b, wgo))
+        except Exception as e:
+            self._mod_gcs_label.setText('E-518 readback error: %s' % e)
 
     def _crop_roi(self, frame):
         x0, y0, w, h = self._roi
@@ -995,6 +1039,7 @@ class MainWindow(QMainWindow):
             self._timer.stop()
             self._measure_timer.stop()
             self._align_timer.stop()
+            self._mod_gcs_timer.stop()
         except Exception:
             pass
         try:

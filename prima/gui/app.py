@@ -99,6 +99,12 @@ def main(argv=None):
         for _ in range(n_ticks):
             win._on_tick()
             app.processEvents()
+        # One GCS wave-table readback so Vpp/f show on screenshots
+        try:
+            win._refresh_mod_gcs_readback()
+            app.processEvents()
+        except Exception:
+            pass
 
         if args.screenshot_measure:
             win._on_find_pupils()
