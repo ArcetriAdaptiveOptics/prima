@@ -1,64 +1,51 @@
-# Prima — Drop 1 PWFS absolute metrology
+# Prima — Drop 1 PWFS + Drop 2 BMC Multi-DM (DAO)
 
-Arcetri packaging for Drop 1: live **Aravis** Manta frames + **direct PI E-518 GCS** tip/tilt modulation, with a Prisma-like metrology GUI.
+Arcetri packaging for the Prima bench.
 
-## Live stack (this PR)
+## Drops
 
-| Role | Device | Path |
-|------|--------|------|
-| WFS camera | Allied Vision **Manta G-419** (`192.168.30.189`) | **Aravis** GigE |
-| PWFS modulator | PI **S-334** @ E-518 (`192.168.30.190:50000`) | **direct GCS TCP** |
+| Drop | Hardware | Control path |
+|------|----------|--------------|
+| **1** | Manta G-419 + PI S-334 @ E-518 | Aravis + direct GCS TCP |
+| **2** | BMC Multi-DM 5.5 µm (140 act) | **DAO SHM** → `daodm_bmc_ctrl` → USB/sim |
 
-**Deferred (not in this PR):** `pysilico_server` (`:7130`), `plico_dm_server` (`:7030`), VimbaX/vmbpy camera path, BMC Multi-DM / DaoPrima (Drop 2).
+plico_dm BMC is optional later — not the Drop 2 bring-up path.
 
 ## Run
 
 ```bash
-source ~/git/.venv-prima/bin/activate   # or your venv
+source ~/git/.venv-prima/bin/activate
 pip install -e ~/git/prima
 
-# Live bench (also Desktop launcher “Prima Drop 1”)
+# Main launcher (opens Drop1 / Drop2 sub-GUIs)
+python -m prima.gui.control_launcher
+# or: ./scripts/start-prima-control.sh
+
+# Drop 1 live
 ./scripts/start-drop1-live-gui.sh
-# or:
-prima-gui --live --aravis-ip 192.168.30.189 --e518-host 192.168.30.190
 
-# Offline demo
-prima-gui
-python scripts/smoke_drop1_metrology.py
+# Drop 2 DM (DAO)
+python scripts/check_bmc_usb.py
+python -m daoprima.apps.daodm_bmc_ctrl --prefer auto --create-graph &
+python -m prima.gui.dm_panel
 ```
 
-Desktop installer:
+Expected USB ID: **1781:0ed8**. If missing, sim backend still exercises SHM + GUI.
+
+### udev (once, when DM is plugged)
 
 ```bash
-cp scripts/Prima-Drop1.desktop ~/Desktop/ ~/.local/share/applications/
-chmod +x ~/Desktop/Prima-Drop1.desktop scripts/start-drop1-live-gui.sh
-gio set ~/Desktop/Prima-Drop1.desktop metadata::trusted true
+sudo cp ~/git/prima/udev/99-bmc-multidm.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-## GUI (what works)
-
-- **Connect live** / **Use demo** (no plico Start/Stop)
-- Exposure lock `t_exp = 1/f_mod`; radius does not change exposure
-- Modulator radius / freq / center → **Apply to E-518**; gain presets 0–40 mrad
-- Idle park at **+50 V** mid-scale; modulation swings around mid
-- E-518 live readback: Vpp, frequency, VOL, WGO / PARKED
-- Pupils, Take Measure, Auto Align, sync dialog
-
-## Hardware notes
-
-- Camera: single Aravis owner (close other Vision apps before Connect).
-- Modulator: single GCS TCP client; mid-travel park uses `SVA` with servo off.
-- Safe radius ceiling default **40 mrad** (`PRIMA_MOD_MAX_MRAD`).
-
-## Tests (bench)
+## Desktop
 
 ```bash
-python scripts/test_drop1_exp_freq_sync.py
-python scripts/test_drop1_pi_direct.py
-python scripts/test_drop1_park_midscale.py
-python scripts/test_drop1_modulation_frames.py
+cp scripts/Prima-Control.desktop scripts/Prima-Drop1.desktop \
+  ~/Desktop/ ~/.local/share/applications/
 ```
 
-## Vendor references (do not modify)
+## Vendor references (read-only)
 
-Read-only trees under `vendor/` (daoEkarus / daoTools / daoHw) if present — not required to run Drop 1.
+`vendor/daoEkarus`, `vendor/daoHw`, `vendor/daoTools` — do not modify.

@@ -1,0 +1,244 @@
+"""Linux USB Multi-DM driver via pyusb (daoHw-style HW process backend).
+
+Mirrors the Windows CIUsbLib Multi path without the COM DLL:
+  VID/PID 1781:0ED8 → reset → HV enable → bulk OUT 320-byte frames on EP2.
+
+Vendor commands use Cypress FX2 vendor requests documented in
+``BMC SW Design USB.pdf`` (§6.2–6.4). Mapping uses MultiDM-01.map (DRV00120-03).
+
+Normalized commands are float in ``[0, 1]`` (BMC SDK convention); packed to
+14-bit-effective 16-bit DAC words (``V = 300 * D / 65536``).
+"""
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import List, Sequence
+
+import numpy as np
+
+from daoprima.hw import bmc_constants as C
+
+_MAPS_DIR = Path(__file__).resolve().parent / 'maps'
+
+
+@dataclass
+class UsbProbeResult:
+    present: bool
+    devices: List[dict]
+    message: str
+    cypress_bootloader: bool = False
+
+
+def probe_usb() -> UsbProbeResult:
+    """Enumerate BMC Multi/Mini (and bare Cypress) without claiming the device."""
+    try:
+        import usb.core
+        import usb.util
+    except ImportError as exc:
+        return UsbProbeResult(
+            False, [], 'pyusb not installed (%s); pip install pyusb' % exc)
+
+    found: List[dict] = []
+    cypress = False
+    for dev in usb.core.find(find_all=True):
+        vid, pid = int(dev.idVendor), int(dev.idProduct)
+        if vid == C.BMC_MULTI_VID and pid in (C.BMC_MULTI_PID, C.BMC_MINI_PID):
+            kind = 'Multi' if pid == C.BMC_MULTI_PID else 'Mini'
+            try:
+                manu = usb.util.get_string(dev, dev.iManufacturer) or ''
+            except Exception:
+                manu = ''
+            try:
+                prod = usb.util.get_string(dev, dev.iProduct) or ''
+            except Exception:
+                prod = ''
+            found.append({
+                'vid': vid, 'pid': pid, 'kind': kind,
+                'bus': int(getattr(dev, 'bus', -1) or -1),
+                'address': int(getattr(dev, 'address', -1) or -1),
+                'manufacturer': manu, 'product': prod,
+            })
+        elif vid == C.CYPRESS_VID and pid == C.CYPRESS_PID_NO_EEPROM:
+            cypress = True
+            found.append({
+                'vid': vid, 'pid': pid, 'kind': 'Cypress-no-EEPROM',
+                'bus': int(getattr(dev, 'bus', -1) or -1),
+                'address': int(getattr(dev, 'address', -1) or -1),
+                'manufacturer': '', 'product': '',
+            })
+
+    if found and any(d['kind'] in ('Multi', 'Mini') for d in found):
+        return UsbProbeResult(
+            True, found,
+            'BMC USB device(s) present: %s' % ', '.join(
+                '%s %04x:%04x' % (d['kind'], d['vid'], d['pid']) for d in found),
+            cypress_bootloader=cypress)
+    if cypress:
+        return UsbProbeResult(
+            False, found,
+            'Cypress FX2 without EEPROM (04b4:8613) — firmware not loaded; '
+            'power-cycle Multi Driver or load firmware with CIUsbLoader',
+            cypress_bootloader=True)
+    return UsbProbeResult(
+        False, found,
+        'No BMC Multi/Mini USB device (expected 1781:0ed8). '
+        'Check Multi Driver power, Mini-B cable, and lsusb.')
+
+
+def load_map(name: str = 'MultiDM-01.map') -> np.ndarray:
+    path = _MAPS_DIR / name
+    if not path.is_file():
+        # fall back to vendor-sdks copy
+        alt = Path.home() / 'git' / 'vendor-sdks' / 'bmc' / 'Usb' / name
+        path = alt if alt.is_file() else path
+    arr = np.loadtxt(str(path), dtype=np.int32)
+    if arr.size != C.USB_NUM_WORDS_MULTI:
+        raise ValueError('map %s has %d entries, need %d' % (
+            path, arr.size, C.USB_NUM_WORDS_MULTI))
+    return arr
+
+
+def floats_to_dac(cmd: np.ndarray) -> np.ndarray:
+    """Map float [0,1] (or small bipolar around 0 → clip) to uint16 DAC words."""
+    x = np.asarray(cmd, dtype=np.float64).ravel()
+    # Allow mild bipolar: map [-1,1] → [0,1] only if any negative and max<=1
+    if np.any(x < 0) and np.max(np.abs(x)) <= 1.0 + 1e-6:
+        x = 0.5 + 0.5 * np.clip(x, -1.0, 1.0)
+    x = np.clip(x, 0.0, 1.0)
+    # 16-bit word; hardware drops 2 LSBs → 14-bit
+    return (x * 65535.0 + 0.5).astype(np.uint16)
+
+
+def pack_frame(act140: np.ndarray, act_map: np.ndarray) -> bytes:
+    """Build 320-byte Multi frame: map[j] selects source index in 160-word buffer."""
+    buf = np.zeros(C.USB_NUM_WORDS_MULTI, dtype=np.uint16)
+    dac = floats_to_dac(act140)
+    n = min(dac.size, C.N_ACTUATORS_USER)
+    buf[:n] = dac[:n]
+    mapped = buf[act_map]
+    return mapped.astype('<u2').tobytes()
+
+
+class MultiDmUsb:
+    """Claim Cambridge Innovations Multi Driver and send mapped frames."""
+
+    def __init__(self, map_name: str = 'MultiDM-01.map', timeout_ms: int = 1000):
+        self.map_name = map_name
+        self.timeout_ms = timeout_ms
+        self._dev = None
+        self._ep_out = None
+        self._map = load_map(map_name)
+        self._last = np.zeros(C.N_ACTUATORS_USER, dtype=np.float64)
+        self.serial = 'USB-MultiDM'
+        self.n_actuators = C.N_ACTUATORS_USER
+
+    def open(self) -> None:
+        import usb.core
+        import usb.util
+
+        probe = probe_usb()
+        if not probe.present:
+            raise RuntimeError(probe.message)
+
+        dev = usb.core.find(idVendor=C.BMC_MULTI_VID, idProduct=C.BMC_MULTI_PID)
+        if dev is None:
+            raise RuntimeError('Multi DM (1781:0ed8) not found after probe')
+
+        # Detach kernel driver if any
+        try:
+            if dev.is_kernel_driver_active(0):
+                dev.detach_kernel_driver(0)
+        except (NotImplementedError, usb.core.USBError):
+            pass
+
+        try:
+            dev.set_configuration()
+        except usb.core.USBError as exc:
+            # Permission / busy
+            raise RuntimeError(
+                'Cannot claim BMC USB device (%s). '
+                'Install udev rule (scripts/udev/99-bmc-multidm.rules) '
+                'or run once: sudo chmod a+rw '
+                '/dev/bus/usb/%03d/%03d' % (
+                    exc, int(dev.bus), int(dev.address))) from exc
+
+        cfg = dev.get_active_configuration()
+        intf = cfg[(0, 0)]
+        ep_out = usb.util.find_descriptor(
+            intf,
+            custom_match=lambda e: usb.util.endpoint_direction(
+                e.bEndpointAddress) == usb.util.ENDPOINT_OUT)
+        if ep_out is None:
+            # fall back to EP2
+            ep_out = intf[0] if 0 in intf else None
+            if ep_out is None:
+                raise RuntimeError('No bulk OUT endpoint on BMC Multi USB')
+
+        self._dev = dev
+        self._ep_out = ep_out
+        self._reset_and_hv()
+        self.send_data(np.zeros(self.n_actuators))
+
+    def _ctrl_set(self, code: int) -> None:
+        """VR_SetControl (0xF5): wValue = control code (CIUsbLib convention)."""
+        assert self._dev is not None
+        # bmRequestType: vendor | device | host-to-device
+        self._dev.ctrl_transfer(
+            0x40, C.VR_SET_CONTROL, code & 0xFFFF, 0, None,
+            timeout=self.timeout_ms)
+
+    def _ctrl_get_status(self) -> bytes:
+        assert self._dev is not None
+        return bytes(self._dev.ctrl_transfer(
+            0xC0, C.VR_GET_STATUS, 0, 0, 8, timeout=self.timeout_ms))
+
+    def _reset_and_hv(self) -> None:
+        # FRESET active-low: deassert then assert (UsbExMulti.cpp)
+        try:
+            self._ctrl_set(C.CTRL_DEASSERT_FRESET)
+            time.sleep(0.01)
+            self._ctrl_set(C.CTRL_ASSERT_FRESET)
+            time.sleep(0.01)
+            self._ctrl_set(C.CTRL_ASSERT_HV_ENAB)
+        except Exception as exc:
+            # Some firmwares ignore vendor req until first frame — continue
+            self._hv_warning = str(exc)
+
+    def send_data(self, cmd: Sequence[float]) -> None:
+        if self._dev is None or self._ep_out is None:
+            raise RuntimeError('BMC USB not open')
+        arr = np.asarray(cmd, dtype=np.float64).ravel()
+        if arr.size != self.n_actuators:
+            raise ValueError('need %d actuators, got %d' % (
+                self.n_actuators, arr.size))
+        frame = pack_frame(arr, self._map)
+        # StepFrame: assert FRAME_SYNC around bulk write when possible
+        try:
+            self._ctrl_set(C.CTRL_ASSERT_FRAME_SYNC)
+        except Exception:
+            pass
+        written = self._dev.write(
+            self._ep_out.bEndpointAddress, frame, timeout=self.timeout_ms)
+        try:
+            self._ctrl_set(C.CTRL_DEASSERT_FRAME_SYNC)
+        except Exception:
+            pass
+        if written < len(frame):
+            raise RuntimeError('short USB write %d / %d' % (written, len(frame)))
+        self._last = arr.copy()
+
+    def get_actuator_data(self) -> np.ndarray:
+        return self._last.copy()
+
+    def close(self) -> None:
+        if self._dev is not None:
+            try:
+                self._ctrl_set(C.CTRL_DEASSERT_HV_ENAB)
+            except Exception:
+                pass
+            import usb.util
+            usb.util.dispose_resources(self._dev)
+        self._dev = None
+        self._ep_out = None
