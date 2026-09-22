@@ -14,7 +14,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
 import numpy as np
 
@@ -146,7 +146,6 @@ class MultiDmUsb:
         if dev is None:
             raise RuntimeError('Multi DM (1781:0ed8) not found after probe')
 
-        # Detach kernel driver if any
         try:
             if dev.is_kernel_driver_active(0):
                 dev.detach_kernel_driver(0)
@@ -155,8 +154,8 @@ class MultiDmUsb:
 
         try:
             dev.set_configuration()
+            usb.util.claim_interface(dev, 0)
         except usb.core.USBError as exc:
-            # Permission / busy
             raise RuntimeError(
                 'Cannot claim BMC USB device (%s). '
                 'Install udev rule (scripts/udev/99-bmc-multidm.rules) '
@@ -171,39 +170,46 @@ class MultiDmUsb:
             custom_match=lambda e: usb.util.endpoint_direction(
                 e.bEndpointAddress) == usb.util.ENDPOINT_OUT)
         if ep_out is None:
-            # fall back to EP2
-            ep_out = intf[0] if 0 in intf else None
-            if ep_out is None:
-                raise RuntimeError('No bulk OUT endpoint on BMC Multi USB')
+            raise RuntimeError('No bulk OUT endpoint on BMC Multi USB')
 
         self._dev = dev
         self._ep_out = ep_out
+        try:
+            dev.clear_halt(ep_out.bEndpointAddress)
+        except Exception:
+            pass
         self._reset_and_hv()
-        self.send_data(np.zeros(self.n_actuators))
+        self.send_data(np.full(self.n_actuators, 0.5))  # safe mid flat
 
     def _ctrl_set(self, code: int) -> None:
-        """VR_SetControl (0xF5): wValue = control code (CIUsbLib convention)."""
+        """VR_SetControl (0xF5): CIUsb control id in wIndex (lab-proven)."""
         assert self._dev is not None
-        # bmRequestType: vendor | device | host-to-device
         self._dev.ctrl_transfer(
-            0x40, C.VR_SET_CONTROL, code & 0xFFFF, 0, None,
+            0x40, C.VR_SET_CONTROL, 0, code & 0xFFFF, None,
             timeout=self.timeout_ms)
 
     def _ctrl_get_status(self) -> bytes:
         assert self._dev is not None
         return bytes(self._dev.ctrl_transfer(
-            0xC0, C.VR_GET_STATUS, 0, 0, 8, timeout=self.timeout_ms))
+            0xC0, C.VR_GET_STATUS, 0, 0, 2, timeout=self.timeout_ms))
 
     def _reset_and_hv(self) -> None:
-        # FRESET active-low: deassert then assert (UsbExMulti.cpp)
+        # VR_ResetAll arms FX2 endpoints; then FRESET pulse + HV enable
+        # (UsbExMulti.cpp / BMC SW Design §5.6). Do NOT toggle FRAME_SYNC.
+        try:
+            self._dev.ctrl_transfer(
+                0x40, C.VR_RESET_ALL, 0, 0, None, timeout=self.timeout_ms)
+        except Exception as exc:
+            self._hv_warning = 'ResetAll: %s' % exc
+        time.sleep(0.02)
         try:
             self._ctrl_set(C.CTRL_DEASSERT_FRESET)
             time.sleep(0.01)
             self._ctrl_set(C.CTRL_ASSERT_FRESET)
             time.sleep(0.01)
             self._ctrl_set(C.CTRL_ASSERT_HV_ENAB)
+            time.sleep(0.02)
         except Exception as exc:
-            # Some firmwares ignore vendor req until first frame — continue
             self._hv_warning = str(exc)
 
     def send_data(self, cmd: Sequence[float]) -> None:
@@ -214,23 +220,25 @@ class MultiDmUsb:
             raise ValueError('need %d actuators, got %d' % (
                 self.n_actuators, arr.size))
         frame = pack_frame(arr, self._map)
-        # StepFrame: assert FRAME_SYNC around bulk write when possible
-        try:
-            self._ctrl_set(C.CTRL_ASSERT_FRAME_SYNC)
-        except Exception:
-            pass
+        # CIUsb_StepFrameData ≡ bulk OUT EP2; FRAME_SYNC is reserved/unused
         written = self._dev.write(
             self._ep_out.bEndpointAddress, frame, timeout=self.timeout_ms)
-        try:
-            self._ctrl_set(C.CTRL_DEASSERT_FRAME_SYNC)
-        except Exception:
-            pass
         if written < len(frame):
             raise RuntimeError('short USB write %d / %d' % (written, len(frame)))
         self._last = arr.copy()
 
     def get_actuator_data(self) -> np.ndarray:
         return self._last.copy()
+
+    def cable_ok(self) -> Optional[bool]:
+        """Best-effort CABLE_OK from PortE status (bit 2)."""
+        try:
+            st = self._ctrl_get_status()
+            if not st:
+                return None
+            return bool(st[0] & 0x04)
+        except Exception:
+            return None
 
     def close(self) -> None:
         if self._dev is not None:
@@ -239,6 +247,10 @@ class MultiDmUsb:
             except Exception:
                 pass
             import usb.util
+            try:
+                usb.util.release_interface(self._dev, 0)
+            except Exception:
+                pass
             usb.util.dispose_resources(self._dev)
         self._dev = None
         self._ep_out = None
