@@ -28,9 +28,9 @@ def main() -> int:
     }
 
     try:
-        m = load_map('MultiDM-01.map')
+        m = load_map('MULTI140.map')
         report['map'] = {
-            'name': 'MultiDM-01.map',
+            'name': 'MULTI140.map',
             'len': int(m.size),
             'min': int(m.min()),
             'max': int(m.max()),

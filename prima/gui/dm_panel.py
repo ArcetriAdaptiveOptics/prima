@@ -20,12 +20,31 @@ from PyQt5.QtWidgets import (
     QFormLayout, QStatusBar, QComboBox, QSizePolicy, QFileDialog,
 )
 
+from pathlib import Path
+
 from prima.gui.branding import build_brand_row, install_watermark
 
 pg.setConfigOptions(imageAxisOrder='row-major', antialias=True)
 
 N_ACT = 140
 GRID = 12
+
+# Lab optical flat (user-provided, 140 floats in [0,1]) — not mid-0.5.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_FLAT_PATH = Path(os.environ.get(
+    'PRIMA_DM_FLAT',
+    str(_REPO_ROOT / 'data' / 'bmc' / 'multidm-flat.txt')))
+
+
+def load_shipped_flat(path: Path | None = None) -> np.ndarray:
+    """Load the shipped Multi-DM flat; raise if count/range invalid."""
+    p = Path(path) if path is not None else DEFAULT_FLAT_PATH
+    arr = np.loadtxt(p, dtype=float).ravel()
+    if arr.size != N_ACT:
+        raise ValueError('flat %s has %d values, need %d' % (p, arr.size, N_ACT))
+    if not np.all(np.isfinite(arr)) or np.any(arr < 0) or np.any(arr > 1):
+        raise ValueError('flat %s has values outside [0,1] or non-finite' % p)
+    return arr.astype(np.float32)
 
 
 def _actuator_to_grid(cmd: np.ndarray) -> np.ndarray:
@@ -167,9 +186,14 @@ class DmPanelWindow(QMainWindow):
     def _build_shapes(self):
         box = QGroupBox('Open-loop shapes → SHM')
         lay = QVBoxLayout(box)
+        b_flat = QPushButton('Flat (shipped MultiDM)')
+        b_flat.setObjectName('primary')
+        b_flat.setToolTip(str(DEFAULT_FLAT_PATH))
+        b_flat.clicked.connect(self._on_flat)
+        lay.addWidget(b_flat)
         for label, slot in (
                 ('Zero', self._on_zero),
-                ('Flat mid (0.5)', self._on_flat),
+                ('Flat mid (0.5)', self._on_flat_mid),
                 ('Random ±0.05 about mid', self._on_random),
                 ('Checkerboard about mid', self._on_checker),
                 ('Load CSV shape…', self._on_load_csv),
@@ -251,20 +275,45 @@ class DmPanelWindow(QMainWindow):
         self._apply(np.zeros(N_ACT))
 
     def _on_flat(self):
+        """Apply the shipped lab optical flat (not mid-0.5)."""
+        try:
+            flat = load_shipped_flat()
+        except Exception as exc:
+            self.statusBar().showMessage('flat load failed: %s' % exc, 8000)
+            return
+        self._apply(flat)
+        self.statusBar().showMessage(
+            'applied shipped flat  min=%.3f max=%.3f mean=%.3f' % (
+                float(flat.min()), float(flat.max()), float(flat.mean())),
+            5000)
+
+    def _on_flat_mid(self):
         self._apply(np.full(N_ACT, 0.5))
 
     def _on_random(self):
         rng = np.random.default_rng()
-        self._apply(np.clip(0.5 + rng.uniform(-0.05, 0.05, N_ACT), 0, 1))
+        # Random about the shipped flat when available, else mid-0.5
+        try:
+            base = load_shipped_flat().astype(float)
+        except Exception:
+            base = 0.5
+        self._apply(np.clip(base + rng.uniform(-0.05, 0.05, N_ACT), 0, 1))
 
     def _on_checker(self):
-        cmd = np.full(N_ACT, 0.5)
-        cmd[0::2] = 0.55
-        cmd[1::2] = 0.45
+        try:
+            base = float(np.mean(load_shipped_flat()))
+        except Exception:
+            base = 0.5
+        cmd = np.full(N_ACT, base)
+        cmd[0::2] = min(base + 0.05, 1.0)
+        cmd[1::2] = max(base - 0.05, 0.0)
         self._apply(cmd)
 
     def _on_poke(self):
-        cmd = np.full(N_ACT, 0.5, dtype=np.float32)
+        try:
+            cmd = load_shipped_flat().copy()
+        except Exception:
+            cmd = np.full(N_ACT, 0.5, dtype=np.float32)
         cmd[int(self._poke_idx.value())] = float(self._poke_amp.value())
         self._apply(cmd)
 

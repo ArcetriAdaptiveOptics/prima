@@ -112,8 +112,8 @@ def probe_bmc_usb():
     return probe_usb()
 
 
-def open_bmc_dm(prefer: str = 'auto', serial: str = 'MultiUSB000',
-                map_name: str = 'MultiDM-01.map') -> BmcMultiDm:
+def open_bmc_dm(prefer: str = 'auto', serial: str = 'C30W052088',
+                map_name: str = 'MULTI140.map') -> BmcMultiDm:
     """Open BMC Multi-DM.
 
     ``prefer``: ``auto`` | ``vendor`` | ``usb`` | ``sim``

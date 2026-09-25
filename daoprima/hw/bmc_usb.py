@@ -4,7 +4,8 @@ Mirrors the Windows CIUsbLib Multi path without the COM DLL:
   VID/PID 1781:0ED8 → reset → HV enable → bulk OUT 320-byte frames on EP2.
 
 Vendor commands use Cypress FX2 vendor requests documented in
-``BMC SW Design USB.pdf`` (§6.2–6.4). Mapping uses MultiDM-01.map (DRV00120-03).
+``BMC SW Design USB.pdf`` (§6.2–6.4). Default map is ``MULTI140.map``
+(from profile ``C30W052088.dm``); ``MultiDM-01.map`` remains available.
 
 Normalized commands are float in ``[0, 1]`` (BMC SDK convention); packed to
 14-bit-effective 16-bit DAC words (``V = 300 * D / 65536``).
@@ -87,11 +88,13 @@ def probe_usb() -> UsbProbeResult:
         'Check Multi Driver power, Mini-B cable, and lsusb.')
 
 
-def load_map(name: str = 'MultiDM-01.map') -> np.ndarray:
+def load_map(name: str = 'MULTI140.map') -> np.ndarray:
     path = _MAPS_DIR / name
     if not path.is_file():
         # fall back to vendor-sdks copy
-        alt = Path.home() / 'git' / 'vendor-sdks' / 'bmc' / 'Usb' / name
+        alt = Path.home() / 'git' / 'vendor-sdks' / 'bmc' / 'Map' / name
+        if not alt.is_file():
+            alt = Path.home() / 'git' / 'vendor-sdks' / 'bmc' / 'Usb' / name
         path = alt if alt.is_file() else path
     arr = np.loadtxt(str(path), dtype=np.int32)
     if arr.size != C.USB_NUM_WORDS_MULTI:
@@ -124,7 +127,7 @@ def pack_frame(act140: np.ndarray, act_map: np.ndarray) -> bytes:
 class MultiDmUsb:
     """Claim Cambridge Innovations Multi Driver and send mapped frames."""
 
-    def __init__(self, map_name: str = 'MultiDM-01.map', timeout_ms: int = 1000):
+    def __init__(self, map_name: str = 'MULTI140.map', timeout_ms: int = 1000):
         self.map_name = map_name
         self.timeout_ms = timeout_ms
         self._dev = None

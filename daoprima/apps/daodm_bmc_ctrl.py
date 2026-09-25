@@ -32,8 +32,10 @@ def main(argv=None) -> int:
                    help='command SHM path (default: %s)' % N.SHM_DM1_CMD)
     p.add_argument('--prefer', default='auto',
                    choices=['auto', 'usb', 'vendor', 'sim'])
-    p.add_argument('--serial', default='MultiUSB000')
-    p.add_argument('--map', default='MultiDM-01.map')
+    p.add_argument('--serial', default='C30W052088',
+                   help='BMC profile / serial (vendor SDK open_dm)')
+    p.add_argument('--map', default='MULTI140.map',
+                   help='actuator map (profile C30W052088 uses MULTI140.map)')
     p.add_argument('--period', type=float, default=0.002,
                    help='poll period seconds (default 2 ms)')
     p.add_argument('--create-graph', action='store_true',
