@@ -199,10 +199,12 @@ class MetrologyEngine:
         self._pupil_radius = float(radius_px)
 
     def find_pupils_from_frame(self, frame=None):
-        """Quadrant-centroid pupil find (Drop 1; no pupil-finder server).
+        """Quadrant pupil find with adaptive intensity thresholds.
 
-        Reliable on the four-spot demo layout and usable as a first guess on
-        lab frames before a calibrated pupil-finder service is wired.
+        Per-quadrant Otsu (Prisma ``convertToBinary`` spirit), with percentile
+        and robust mean/max fallbacks. Old recipe ``mean+0.5*(max-mean)`` fails
+        when ``max`` is saturated (255): threshold ~140 and centroids collapse
+        onto bright cores.
         """
         if frame is None:
             raw = self._camera_raw.getFrameForDisplay()
@@ -213,34 +215,87 @@ class MetrologyEngine:
             frame = np.asarray(frame, dtype=np.float64)
         frame = np.squeeze(frame)
         h, w = frame.shape[:2]
+        # Prisma / demo A–D order (see PyramidPupils._reorderAccordingToGeometry):
+        #   A = bottom-left, B = bottom-right, C = top-left, D = top-right
         quads = [
-            frame[0:h // 2, 0:w // 2],
-            frame[0:h // 2, w // 2:w],
-            frame[h // 2:h, 0:w // 2],
-            frame[h // 2:h, w // 2:w],
+            frame[h // 2:h, 0:w // 2],       # A BL
+            frame[h // 2:h, w // 2:w],       # B BR
+            frame[0:h // 2, 0:w // 2],       # C TL
+            frame[0:h // 2, w // 2:w],       # D TR
         ]
-        offsets = [(0, 0), (0, w // 2), (h // 2, 0), (h // 2, w // 2)]
+        offsets = [
+            (h // 2, 0),
+            (h // 2, w // 2),
+            (0, 0),
+            (0, w // 2),
+        ]
         centers = []
         radii = []
         for q, (oy, ox) in zip(quads, offsets):
-            thr = q.mean() + 0.5 * (q.max() - q.mean())
-            mask = q >= thr
-            if not np.any(mask):
-                yy, xx = np.unravel_index(np.argmax(q), q.shape)
-                cy, cx = float(yy), float(xx)
-                r = min(q.shape) * 0.25
-            else:
-                ys, xs = np.nonzero(mask)
-                cy = float(ys.mean())
-                cx = float(xs.mean())
-                r = float(0.5 * (ys.max() - ys.min() + xs.max() - xs.min()) / 2)
-                r = max(r, 8.0)
+            cy, cx, r = self._centroid_in_quadrant(q)
             centers.append([cy + oy, cx + ox])
             radii.append(r)
         centers = np.asarray(centers, dtype=float)
         self.set_pyramid_geometry(centers)
         self._pupil_radius = float(np.median(radii))
         return centers, self._pupil_radius
+
+    @staticmethod
+    def _quadrant_threshold(q: np.ndarray) -> float:
+        """Adaptive bright-pupil threshold for one quadrant."""
+        q = np.asarray(q, dtype=np.float64)
+        if q.size == 0 or not np.isfinite(q).any():
+            return 0.0
+        # Prefer Otsu (handles continuum + saturated cores)
+        try:
+            from skimage.filters import threshold_otsu
+            thr = float(threshold_otsu(q))
+            # Reject pathological Otsu that takes almost everything / nothing
+            frac = float(np.mean(q >= thr))
+            if 0.01 <= frac <= 0.35:
+                return thr
+        except Exception:
+            pass
+        # Percentile: keep brightest ~10%
+        thr_p = float(np.percentile(q, 90))
+        frac_p = float(np.mean(q >= thr_p))
+        if 0.01 <= frac_p <= 0.35:
+            return thr_p
+        # Robust mid-of-(mean, p99.5) — avoids single saturated max=255
+        hi = float(np.percentile(q, 99.5))
+        return float(q.mean() + 0.5 * (hi - q.mean()))
+
+    @classmethod
+    def _centroid_in_quadrant(cls, q: np.ndarray):
+        q = np.asarray(q, dtype=np.float64)
+        thr = cls._quadrant_threshold(q)
+        mask = q >= thr
+        # Largest connected component (drop continuum flecks)
+        try:
+            from scipy import ndimage as ndi
+            labeled, nlab = ndi.label(mask)
+            if nlab > 0:
+                sizes = ndi.sum(mask, labeled, index=np.arange(1, nlab + 1))
+                best = int(np.argmax(sizes)) + 1
+                # Require a minimum area (~0.5% of quadrant or 64 px)
+                if sizes[best - 1] >= max(64, 0.005 * q.size):
+                    mask = labeled == best
+        except Exception:
+            pass
+        if not np.any(mask):
+            yy, xx = np.unravel_index(int(np.argmax(q)), q.shape)
+            return float(yy), float(xx), float(min(q.shape) * 0.2)
+        ys, xs = np.nonzero(mask)
+        # Intensity-weighted centroid (more stable than binary mean)
+        wts = q[ys, xs]
+        wsum = float(wts.sum()) + 1e-12
+        cy = float(np.dot(ys, wts) / wsum)
+        cx = float(np.dot(xs, wts) / wsum)
+        # Radius from enclosed bright area
+        area = float(mask.sum())
+        r = float(np.sqrt(area / np.pi))
+        r = max(r, 8.0)
+        return cy, cx, r
 
     def _set_theoretical_tilt_response(self):
         self._mgr.setPyramidTiltResponse(
