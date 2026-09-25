@@ -1,7 +1,8 @@
 """Aravis (GenICam) live camera for Allied Vision GigE Vision.
 
 Drop 1 primary camera path: Manta on the lab NIC via Aravis continuous grab.
-Wrapper matches DemoCamera so prima-gui can display frames.
+Captures **Mono12** (12-bit right-aligned in uint16, ADU 0–4095). Display may
+scale for the screen; metrology uses raw 12-bit arrays via ``getFrame``.
 """
 from __future__ import annotations
 
@@ -12,13 +13,17 @@ import numpy as np
 
 
 DEFAULT_MANTA_IP = '192.168.30.189'
+# Full-well for Mono12 (right-aligned in 16-bit words).
+MONO12_FULL_WELL = 4095
+PREFERRED_PIXEL_FORMAT = 'Mono12'
 
 
 class AravisLiveCamera:
     """Continuous GigE grab via PyGObject Aravis → DemoCamera-shaped API."""
 
     def __init__(self, ip_address=DEFAULT_MANTA_IP, name=None,
-                 packet_size=1500, n_buffers=8):
+                 packet_size=1500, n_buffers=8,
+                 pixel_format=PREFERRED_PIXEL_FORMAT):
         import gi
         gi.require_version('Aravis', '0.8')
         from gi.repository import Aravis
@@ -27,12 +32,16 @@ class AravisLiveCamera:
         self._ip = str(ip_address)
         self._name = name or ('Aravis@%s' % self._ip)
         self._mutex = threading.RLock()
-        self._last = np.zeros((64, 64), dtype=np.uint8)
+        self._last = np.zeros((64, 64), dtype=np.uint16)
         self._binning = 1
         self._readout_ms = 8.0
         self._running = False
         self._thread = None
         self._stop = threading.Event()
+        self._pixel_format = str(pixel_format or PREFERRED_PIXEL_FORMAT)
+        self._bit_depth = 12
+        self._full_well = MONO12_FULL_WELL
+        self._bytes_per_pixel = 2
 
         Aravis.update_device_list()
         self._cam = None
@@ -60,6 +69,7 @@ class AravisLiveCamera:
                     self._cam.gv_set_packet_size(int(packet_size))
                 except Exception:
                     pass
+                self._configure_pixel_format()
                 try:
                     self._cam.set_string('AcquisitionMode', 'Continuous')
                 except Exception:
@@ -89,6 +99,71 @@ class AravisLiveCamera:
                 if self._last.shape != (64, 64) or int(self._last.max()) > 0:
                     break
             time.sleep(0.05)
+
+    def _configure_pixel_format(self):
+        """Force Mono12 when available; fall back to Mono8 only if needed."""
+        wanted = self._pixel_format
+        for fmt in (wanted, 'Mono12', 'Mono8'):
+            try:
+                self._cam.set_string('PixelFormat', fmt)
+                got = self._cam.get_string('PixelFormat')
+                self._pixel_format = got
+                break
+            except Exception:
+                continue
+        else:
+            try:
+                self._pixel_format = self._cam.get_string('PixelFormat')
+            except Exception:
+                self._pixel_format = 'unknown'
+
+        pf = (self._pixel_format or '').upper()
+        if '12' in pf:
+            self._bit_depth = 12
+            self._full_well = MONO12_FULL_WELL
+            self._bytes_per_pixel = 2 if 'PACKED' not in pf else 0  # packed handled later
+        elif '8' in pf:
+            self._bit_depth = 8
+            self._full_well = 255
+            self._bytes_per_pixel = 1
+        else:
+            self._bit_depth = 12
+            self._full_well = MONO12_FULL_WELL
+            self._bytes_per_pixel = 2
+        self._name = 'Aravis@%s [%s]' % (self._ip, self._pixel_format)
+
+    def _decode_buffer(self, data, w, h):
+        """Decode GigE buffer → uint16 ADU in [0, full_well]."""
+        pf = (self._pixel_format or '').upper()
+        n = int(w) * int(h)
+        buf = bytes(data) if not isinstance(data, (bytes, bytearray, memoryview)) else data
+        if 'PACKED' in pf and '12' in pf:
+            # Mono12Packed: 3 bytes → 2 pixels; uncommon path — unpack LE nibble packing
+            raw = np.frombuffer(buf, dtype=np.uint8)
+            if raw.size < (n * 3 + 1) // 2:
+                raise ValueError('Mono12Packed buffer too small')
+            # AVT packing: b0=[A7..0], b1=[B3..0|A11..8], b2=[B11..4]
+            out = np.empty(n, dtype=np.uint16)
+            triplets = raw.size // 3
+            usable = min(triplets * 2, n)
+            b0 = raw[0:triplets * 3:3].astype(np.uint16)
+            b1 = raw[1:triplets * 3:3].astype(np.uint16)
+            b2 = raw[2:triplets * 3:3].astype(np.uint16)
+            a = b0 | ((b1 & 0x0F) << 8)
+            b = (b2 << 4) | ((b1 & 0xF0) >> 4)
+            out[0:usable:2] = a[: usable // 2]
+            out[1:usable:2] = b[: usable // 2]
+            return out.reshape(int(h), int(w))
+        if self._bytes_per_pixel >= 2 or len(buf) >= n * 2:
+            arr = np.frombuffer(buf, dtype='<u2', count=n).reshape(int(h), int(w))
+            # Allied Vision Mono12 via Aravis: right-aligned 0..4095.
+            # If left-aligned (values > 4095), shift down.
+            if int(arr.max()) > self._full_well:
+                arr = (arr >> 4).astype(np.uint16)
+            return arr
+        # Mono8
+        arr8 = np.frombuffer(buf, dtype=np.uint8, count=n).reshape(int(h), int(w))
+        return arr8.astype(np.uint16)
 
     def _safe_leave(self):
         try:
@@ -128,9 +203,12 @@ class AravisLiveCamera:
                 if buf.get_status() == Aravis.BufferStatus.SUCCESS:
                     data = buf.get_data()
                     x, y, w, h = self._cam.get_region()
-                    arr = np.frombuffer(data, dtype=np.uint8).reshape(int(h), int(w))
+                    try:
+                        arr = self._decode_buffer(data, w, h)
+                    except Exception:
+                        continue
                     with self._mutex:
-                        self._last = arr.copy()
+                        self._last = arr
             finally:
                 try:
                     self._stream.push_buffer(buf)
@@ -148,28 +226,51 @@ class AravisLiveCamera:
     def name(self):
         return self._name
 
-    def getFrameForDisplay(self):
+    @property
+    def bit_depth(self):
+        return int(self._bit_depth)
+
+    @property
+    def full_well(self):
+        return int(self._full_well)
+
+    @property
+    def pixel_format(self):
+        return str(self._pixel_format)
+
+    def getFrame(self):
+        """Raw metrology frame in native ADU (uint16, Mono12 → 0..4095)."""
         with self._mutex:
-            arr = self._last
-        if arr.dtype != np.uint8:
-            a = arr.astype(np.float64)
-            a = a - a.min()
-            mx = a.max()
-            if mx > 0:
-                a = a / mx
-            arr = (a * 255).astype(np.uint8)
+            arr = np.asarray(self._last)
         b = self._binning
         if b > 1:
             h, w = arr.shape
             arr = arr[: h - h % b: b, : w - w % b: b]
         return arr
 
+    def getRawFrame(self):
+        return self.getFrame()
+
+    def getFrameForDisplay(self):
+        """Same 12-bit ADU array as metrology (GUI scales with levels 0..4095)."""
+        return self.getFrame()
+
     def getFutureFrames(self, n, numberOfFramesToAverageForEachImage=1):
         frames = []
-        for _ in range(int(n)):
-            frames.append(self.getFrameForDisplay())
+        n_avg = max(1, int(numberOfFramesToAverageForEachImage))
+        for _ in range(int(n) * n_avg):
+            frames.append(self.getFrame().astype(np.float64))
             time.sleep(0.01)
-        return frames
+        if not frames:
+            return self.getFrame()
+        if int(n) == 1:
+            return np.mean(frames, axis=0)
+        # Return list of n averaged frames
+        out = []
+        for i in range(int(n)):
+            chunk = frames[i * n_avg:(i + 1) * n_avg]
+            out.append(np.mean(chunk, axis=0))
+        return out
 
     def setExposureTime(self, ms):
         # Manta ExposureTimeAbs is microseconds
@@ -190,6 +291,24 @@ class AravisLiveCamera:
                 return float(self._cam.get_exposure_time()) / 1000.0
             except Exception:
                 return 15.0
+
+    def getGain(self):
+        try:
+            return float(self._cam.get_float('Gain'))
+        except Exception:
+            try:
+                return float(self._cam.get_integer('GainRaw'))
+            except Exception:
+                return 0.0
+
+    def setGain(self, gain):
+        try:
+            self._cam.set_float('Gain', float(gain))
+        except Exception:
+            try:
+                self._cam.set_integer('GainRaw', int(round(gain)))
+            except Exception:
+                pass
 
     def getFrameRate(self):
         try:
