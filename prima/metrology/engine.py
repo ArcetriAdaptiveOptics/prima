@@ -23,6 +23,11 @@ MODULATION_GAIN_PRESETS_MRAD = [0.0, 1.0, 2.0, 4.0, 10.0, 20.0, 40.0]
 # Demo pupil radius in pixels (matches DemoCamera ~0.14 * 512)
 DEFAULT_DEMO_PUPIL_RADIUS = 72
 
+# Modulation used only while finding pupils (restored afterward).
+# User lab tip: 10–20 mrad makes the four spots more even for detection.
+PUPIL_FIND_MOD_MRAD_CANDIDATES = (10.0, 20.0)
+PUPIL_FIND_SETTLE_S = 0.6
+
 
 class CameraClientAdapter:
     """Adapt DemoCamera / LiveCameraWrapper / pysilico to MeasurementManager."""
@@ -164,6 +169,8 @@ class MetrologyEngine:
         self._measure_history = []
         self._last_pupil_thresholds = []
         self._last_provisional_dark = 0.0
+        self._last_pupil_find_mod_mrad = None
+        self._last_pupil_find_note = ''
         # apply default timing coupling like Prisma arbitrator
         self.set_exposure_ms(self.DEFAULT_EXPOSURE_MS)
         self.set_modulation_radius_mrad(self.DEFAULT_MOD_RADIUS_MRAD)
@@ -205,6 +212,93 @@ class MetrologyEngine:
     def set_pupil_radius(self, radius_px):
         self._pupil_radius = float(radius_px)
 
+    @staticmethod
+    def _pupil_geometry_score(centers: np.ndarray) -> float:
+        """Lower is better: rectangle residual normalized by separation."""
+        c = np.asarray(centers, dtype=float).reshape(4, 2)
+        y_bot = 0.5 * (c[0, 0] + c[1, 0])
+        y_top = 0.5 * (c[2, 0] + c[3, 0])
+        x_left = 0.5 * (c[0, 1] + c[2, 1])
+        x_right = 0.5 * (c[1, 1] + c[3, 1])
+        sep = max(abs(y_bot - y_top), abs(x_right - x_left), 1.0)
+        target = np.array([
+            [y_bot, x_left], [y_bot, x_right],
+            [y_top, x_left], [y_top, x_right],
+        ], dtype=float)
+        return float(np.mean(np.linalg.norm(c - target, axis=1)) / sep)
+
+    def find_pupils(self, frame=None, mod_mrad=None, restore_mod=True,
+                    settle_s=None):
+        """Find pupils, optionally bumping modulation to 10/20 mrad first.
+
+        Lab practice: higher modulation (10 or 20 mrad) equalizes the four
+        PWFS spots for detection. Previous radius is restored afterward
+        (default), so measure/align can stay at e.g. 4 mrad.
+        """
+        import time as _time
+        settle = float(PUPIL_FIND_SETTLE_S if settle_s is None else settle_s)
+        prev_r = None
+        try:
+            prev_r = float(self._mod.getRadiusInMilliRad())
+        except Exception:
+            prev_r = None
+
+        candidates = []
+        if mod_mrad is not None:
+            candidates = [float(mod_mrad)]
+        else:
+            candidates = list(PUPIL_FIND_MOD_MRAD_CANDIDATES)
+
+        best = None
+        used_mod = None
+        try:
+            for r_try in candidates:
+                if prev_r is not None and abs(r_try - prev_r) > 1e-6:
+                    try:
+                        self.set_modulation_radius_mrad(r_try)
+                        _time.sleep(settle)
+                    except Exception as exc:
+                        # Demo / refused radius — keep trying without bump
+                        self._last_pupil_find_mod_mrad = None
+                        self._last_pupil_find_note = (
+                            'mod bump to %.1f mrad failed: %s' % (r_try, exc))
+                        continue
+                centers, radius = self.find_pupils_from_frame(frame=frame)
+                score = self._pupil_geometry_score(centers)
+                if best is None or score < best[0]:
+                    best = (score, centers, radius, r_try)
+                # Good enough at 10 mrad — skip 20
+                if score < 0.025 and r_try <= 10.5:
+                    break
+                # If caller forced a single mod, don't loop
+                if mod_mrad is not None:
+                    break
+                # Otherwise try next candidate (20) if 10 was uneven
+                frame = None  # re-grab after next mod change
+            if best is None:
+                centers, radius = self.find_pupils_from_frame(frame=frame)
+                used_mod = prev_r
+            else:
+                score, centers, radius, used_mod = best
+                # Re-apply best geometry (may have been overwritten by later try)
+                self.set_pyramid_geometry(centers)
+                self._pupil_radius = float(radius)
+            self._last_pupil_find_mod_mrad = (
+                None if used_mod is None else float(used_mod))
+            self._last_pupil_find_note = (
+                'find @ %.1f mrad (prev %.1f); score=%.4f' % (
+                    float(used_mod) if used_mod is not None else -1.0,
+                    float(prev_r) if prev_r is not None else -1.0,
+                    float(best[0]) if best else -1.0))
+            return centers, float(self._pupil_radius)
+        finally:
+            if restore_mod and prev_r is not None:
+                try:
+                    self.set_modulation_radius_mrad(prev_r)
+                    _time.sleep(min(settle, 0.35))
+                except Exception:
+                    pass
+
     def find_pupils_from_frame(self, frame=None):
         """Find A/B/C/D pupils with per-quadrant thresholds + provisional dark.
 
@@ -215,6 +309,9 @@ class MetrologyEngine:
         adaptive threshold on the dark-subtracted image. Centroids use a
         two-pass ROI refine and a shared median radius so the four spots stay
         mutually consistent (near-rectangular layout).
+
+        Prefer ``find_pupils()`` from the GUI so modulation is bumped to
+        10/20 mrad for acquisition, then restored.
         """
         if frame is None:
             if hasattr(self._camera_raw, 'getFrame'):

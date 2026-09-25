@@ -438,6 +438,9 @@ class MainWindow(QMainWindow):
         self._show_circles.stateChanged.connect(self._refresh_pupil_overlay)
         self._show_names.stateChanged.connect(self._refresh_pupil_overlay)
         self._btn_find_pupils = QPushButton('Find pupils')
+        self._btn_find_pupils.setToolTip(
+            'Temporarily sets modulation to 10 or 20 mrad for detection, '
+            'then restores the previous radius (e.g. 4 mrad).')
         self._btn_find_pupils.clicked.connect(self._on_find_pupils)
         self._pupil_text = QLabel('—')
         self._pupil_text.setObjectName('muted')
@@ -911,11 +914,23 @@ class MainWindow(QMainWindow):
 
     def _on_find_pupils(self):
         try:
-            centers, radius = self._engine.find_pupils_from_frame()
+            prev = float(self._radius_spin.value())
+            # Bump to 10→20 mrad for detection, then restore (engine does it).
+            centers, radius = self._engine.find_pupils(
+                restore_mod=True)
+            # Keep GUI spin at the restored operating radius
+            self._radius_spin.blockSignals(True)
+            self._radius_spin.setValue(prev)
+            self._radius_spin.blockSignals(False)
             self._refresh_pupil_overlay()
+            note = getattr(self._engine, '_last_pupil_find_note', '') or ''
+            used = getattr(self._engine, '_last_pupil_find_mod_mrad', None)
             self._status.showMessage(
-                'Pupils found · r=%.1f px · %d spots' % (
-                    radius, len(centers)))
+                'Pupils found · r=%.1f px · %d spots · find-mod=%s mrad '
+                '(restored %.1f) %s' % (
+                    radius, len(centers),
+                    ('%.0f' % used) if used is not None else '—',
+                    prev, note))
         except Exception as e:
             QMessageBox.warning(self, 'Find pupils', str(e))
 
@@ -1034,6 +1049,16 @@ class MainWindow(QMainWindow):
         was = self._measure_enabled
         self._btn_take.setEnabled(False)
         self._measure_timer.stop()
+        # Refresh pupil geometry at high mod before tip/tilt nulling
+        try:
+            prev = float(self._radius_spin.value())
+            self._engine.find_pupils(restore_mod=True)
+            self._radius_spin.blockSignals(True)
+            self._radius_spin.setValue(prev)
+            self._radius_spin.blockSignals(False)
+            self._refresh_pupil_overlay()
+        except Exception as e:
+            self._status.showMessage('Align: pupil find skipped (%s)' % e)
         self._engine.enable_auto_align(True)
         self._align_timer.start(350)
         self._align_stop_timer.start(8000)
