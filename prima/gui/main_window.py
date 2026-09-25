@@ -46,9 +46,18 @@ class IsoscaleImageView(pg.GraphicsLayoutWidget):
     def set_roi_offset(self, x0, y0):
         self._roi_offset = (int(x0), int(y0))
 
-    def set_frame(self, frame: np.ndarray):
-        self._img.setImage(frame, autoLevels=False, levels=(0, 255))
-        h, w = frame.shape[:2]
+    def set_frame(self, frame: np.ndarray, levels=None):
+        """Show frame; ``levels`` defaults to 8-bit (0,255) or 12-bit (0,4095)."""
+        data = np.asarray(frame)
+        if levels is None:
+            if data.dtype == np.uint8 or (np.issubdtype(data.dtype, np.floating)
+                                          and float(np.nanmax(data)) <= 255.5):
+                levels = (0, 255)
+            else:
+                levels = (0, 4095)
+        self._img.setImage(data.astype(np.float32, copy=False),
+                           autoLevels=False, levels=levels)
+        h, w = data.shape[:2]
         self._vb.setRange(xRange=(0, w), yRange=(0, h), padding=0.02)
 
     def clear_pupils(self):
@@ -131,6 +140,10 @@ class MainWindow(QMainWindow):
         self._frame_info = QLabel('frame —')
         self._frame_info.setObjectName('muted')
         frame_col.addWidget(self._frame_info)
+        self._adu_info = QLabel('ADU —')
+        self._adu_info.setObjectName('muted')
+        self._adu_info.setWordWrap(True)
+        frame_col.addWidget(self._adu_info)
 
         self._metro = MetrologyViews()
         self._metro.setMinimumHeight(220)
@@ -297,23 +310,30 @@ class MainWindow(QMainWindow):
         self._exp_spin.setRange(0.1, 5000.0)
         self._exp_spin.setDecimals(2)
         self._exp_spin.setSuffix(' ms')
-        self._exp_spin.setValue(50.0)
+        self._exp_spin.setValue(1.0)
         self._exp_spin.valueChanged.connect(self._on_exposure_changed)
         self._fps_label = QLabel('—')
         self._period_label = QLabel('—')
         self._match_label = QLabel('—')
         self._lock_exp = QCheckBox('Lock t_exp = 1/f_mod')
-        self._lock_exp.setChecked(True)
+        # Default OFF under bright lab light: locked 100 Hz → 10 ms clips Mono12
+        # near 4095. Enable lock when illumination / ND allows t_exp=1/f.
+        self._lock_exp.setChecked(False)
         self._lock_exp.setToolTip(
-            'Drop 1 rule: exposure follows frequency only. '
-            'When locked, the exposure spin is disabled — '
-            'change f_mod to change t_exp. Radius never touches exposure.')
+            'When locked, exposure follows frequency (t_exp = 1/f_mod). '
+            'Under current lab light, keep unlocked and set ~1 ms so Mono12 '
+            'pupils peak near 60–80% of 4095 ADU (not clipped). '
+            'Radius never touches exposure.')
         self._lock_exp.stateChanged.connect(self._on_lock_toggled)
         form.addRow('Exposure', self._exp_spin)
         form.addRow('Frame rate', self._fps_label)
         form.addRow('Frame period', self._period_label)
         form.addRow('vs 1/f_mod', self._match_label)
         form.addRow(self._lock_exp)
+        self._sat_label = QLabel('ADU: —')
+        self._sat_label.setWordWrap(True)
+        self._sat_label.setObjectName('muted')
+        form.addRow('Raw ADU', self._sat_label)
         self._sync_exposure_spin_enabled()
         return box
 
@@ -346,7 +366,9 @@ class MainWindow(QMainWindow):
         self._freq_spin.setRange(0.1, 500.0)
         self._freq_spin.setDecimals(2)
         self._freq_spin.setSuffix(' Hz')
-        self._freq_spin.setValue(20.0)
+        # Typical PWFS modulation; exposure is unlocked by default so Mono12
+        # can sit near ~50–70% of 4095 without forcing f_mod into kHz.
+        self._freq_spin.setValue(100.0)
         self._radius_spin = QDoubleSpinBox()
         self._radius_spin.setRange(0.0, float(MAX_SAFE_RADIUS_MRAD))
         self._radius_spin.setDecimals(3)
@@ -812,23 +834,59 @@ class MainWindow(QMainWindow):
 
     def _on_tick(self):
         try:
-            frame = self._camera.getFrameForDisplay()
+            # Prefer raw Mono12 ADU (0..4095); never crush to 8-bit for display.
+            if hasattr(self._camera, 'getFrame'):
+                frame = self._camera.getFrame()
+            else:
+                frame = self._camera.getFrameForDisplay()
             if hasattr(frame, 'toNumpyArray'):
                 frame = frame.toNumpyArray()
             frame = np.asarray(frame)
-            if frame.dtype != np.uint8:
-                a = frame.astype(np.float64)
-                a = a - np.nanmin(a)
-                mx = np.nanmax(a)
-                if mx > 0:
-                    a = a / mx
-                frame = (a * 255).astype(np.uint8)
+            full_well = int(getattr(self._camera, 'full_well', 0) or 0)
+            bit_depth = int(getattr(self._camera, 'bit_depth', 0) or 0)
+            if full_well <= 0:
+                # Demo / unknown: infer from data range
+                mx = float(np.nanmax(frame)) if frame.size else 0.0
+                if mx > 255.5 or frame.dtype == np.uint16:
+                    full_well, bit_depth = 4095, 12
+                else:
+                    full_well, bit_depth = 255, 8
+            levels = (0, full_well)
             shown = self._crop_roi(frame)
-            self._view.set_frame(shown)
+            self._view.set_frame(shown, levels=levels)
             mode = 'live' if self._using_live else 'demo'
+            pf = getattr(self._camera, 'pixel_format', None) or (
+                'demo' if not self._using_live else '?')
             self._frame_info.setText(
-                'display %s · full %s · isoscale · %s' % (
-                    shown.shape, frame.shape, mode))
+                'display %s · full %s · %d-bit [%s] · levels 0–%d · %s' % (
+                    shown.shape, frame.shape, bit_depth, pf, full_well, mode))
+            # Raw ADU stats + saturation vs full well (NOT vs 255)
+            flat = np.asarray(shown, dtype=np.float64).ravel()
+            if flat.size:
+                mean_adu = float(np.nanmean(flat))
+                max_adu = float(np.nanmax(flat))
+                # pupil-ish: top 10% brightest
+                p90 = float(np.nanpercentile(flat, 90))
+                bright = flat[flat >= p90]
+                pupil_mean = float(np.nanmean(bright)) if bright.size else mean_adu
+                pupil_max = float(np.nanmax(bright)) if bright.size else max_adu
+                frac_sat = float(np.mean(flat >= (full_well - 1)))
+                sat = frac_sat > 1e-4 or pupil_max >= (0.98 * full_well)
+                adu_txt = (
+                    'mean=%.0f  max=%.0f  pupil≈%.0f (p90+) peak=%.0f / %d' % (
+                        mean_adu, max_adu, pupil_mean, pupil_max, full_well))
+                if sat:
+                    adu_txt += '  ⚠ SATURATED — raise f_mod or unlock+cut exp / ND'
+                    self._adu_info.setObjectName('matchBad')
+                    self._sat_label.setObjectName('matchBad')
+                else:
+                    self._adu_info.setObjectName('muted')
+                    self._sat_label.setObjectName('muted')
+                self._adu_info.setText(adu_txt)
+                self._sat_label.setText(adu_txt)
+                for lab in (self._adu_info, self._sat_label):
+                    lab.style().unpolish(lab)
+                    lab.style().polish(lab)
             self._update_timing_labels()
         except Exception as e:
             self._frame_info.setText('frame error: %s' % e)

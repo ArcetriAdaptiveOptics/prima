@@ -23,8 +23,12 @@ def main():
 
     app, win = build_app(['prima-gui'], demo=True)
 
-    # Default: lock on, exposure spin disabled
-    assert win._lock_exp.isChecked(), 'lock should default on'
+    # Default: lock OFF under bright lab light (Mono12 @ ~1 ms); spin enabled
+    assert not win._lock_exp.isChecked(), 'lock should default off (unsaturated Mono12)'
+    assert win._exp_spin.isEnabled(), 'exposure spin must be enabled when unlocked'
+    # Enable lock to exercise t_exp = 1/f_mod coupling
+    win._lock_exp.setChecked(True)
+    app.processEvents()
     assert not win._exp_spin.isEnabled(), 'exposure spin must be disabled when locked'
     win._freq_spin.setValue(20.0)
     app.processEvents()

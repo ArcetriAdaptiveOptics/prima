@@ -56,10 +56,15 @@ class CameraClientAdapter:
                 return self._to_prima_frame(result)
             except Exception:
                 pass
-        # Demo / display-path average
+        # Prefer raw 12-bit getFrame / getRawFrame over display-scaled path
         frames = []
         for _ in range(max(n, 1) * n_avg):
-            raw = self._camera.getFrameForDisplay()
+            if hasattr(self._camera, 'getFrame'):
+                raw = self._camera.getFrame()
+            elif hasattr(self._camera, 'getRawFrame'):
+                raw = self._camera.getRawFrame()
+            else:
+                raw = self._camera.getFrameForDisplay()
             if hasattr(raw, 'toNumpyArray'):
                 raw = raw.toNumpyArray()
             frames.append(np.asarray(raw, dtype=np.float64))
@@ -133,7 +138,7 @@ class ModulatorClientAdapter:
 class MetrologyEngine:
     """Prisma-like local arbitrator used by Drop 1 GUI."""
 
-    DEFAULT_EXPOSURE_MS = 50.0
+    DEFAULT_EXPOSURE_MS = 1.0
     DEFAULT_MOD_RADIUS_MRAD = 1.5
     DEFAULT_FIBER_UM = 600.0
     PUPIL_SCALE_M_PER_PX = 8.25e-6
@@ -207,7 +212,12 @@ class MetrologyEngine:
         onto bright cores.
         """
         if frame is None:
-            raw = self._camera_raw.getFrameForDisplay()
+            if hasattr(self._camera_raw, 'getFrame'):
+                raw = self._camera_raw.getFrame()
+            elif hasattr(self._camera_raw, 'getRawFrame'):
+                raw = self._camera_raw.getRawFrame()
+            else:
+                raw = self._camera_raw.getFrameForDisplay()
             if hasattr(raw, 'toNumpyArray'):
                 raw = raw.toNumpyArray()
             frame = np.asarray(raw, dtype=np.float64)
