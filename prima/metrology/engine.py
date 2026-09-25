@@ -162,6 +162,8 @@ class MetrologyEngine:
         self._auto_align = False
         self._align_gain = 0.3
         self._measure_history = []
+        self._last_pupil_thresholds = []
+        self._last_provisional_dark = 0.0
         # apply default timing coupling like Prisma arbitrator
         self.set_exposure_ms(self.DEFAULT_EXPOSURE_MS)
         self.set_modulation_radius_mrad(self.DEFAULT_MOD_RADIUS_MRAD)
@@ -204,12 +206,15 @@ class MetrologyEngine:
         self._pupil_radius = float(radius_px)
 
     def find_pupils_from_frame(self, frame=None):
-        """Quadrant pupil find with adaptive intensity thresholds.
+        """Find A/B/C/D pupils with per-quadrant thresholds + provisional dark.
 
-        Per-quadrant Otsu (Prisma ``convertToBinary`` spirit), with percentile
-        and robust mean/max fallbacks. Old recipe ``mean+0.5*(max-mean)`` fails
-        when ``max`` is saturated (255): threshold ~140 and centroids collapse
-        onto bright cores.
+        Order (Prisma): A=BL, B=BR, C=TL, D=TR.
+
+        Dark is estimated without lamp-off from frame-corner patches and
+        per-quadrant border strips (provisional). Each quadrant gets its own
+        adaptive threshold on the dark-subtracted image. Centroids use a
+        two-pass ROI refine and a shared median radius so the four spots stay
+        mutually consistent (near-rectangular layout).
         """
         if frame is None:
             if hasattr(self._camera_raw, 'getFrame'):
@@ -225,13 +230,16 @@ class MetrologyEngine:
             frame = np.asarray(frame, dtype=np.float64)
         frame = np.squeeze(frame)
         h, w = frame.shape[:2]
-        # Prisma / demo A–D order (see PyramidPupils._reorderAccordingToGeometry):
-        #   A = bottom-left, B = bottom-right, C = top-left, D = top-right
+
+        dark_global = self._estimate_provisional_dark(frame)
+        work = np.clip(frame - dark_global, 0.0, None)
+
+        # Pass 1: independent quadrant finds on dark-subtracted frame
         quads = [
-            frame[h // 2:h, 0:w // 2],       # A BL
-            frame[h // 2:h, w // 2:w],       # B BR
-            frame[0:h // 2, 0:w // 2],       # C TL
-            frame[0:h // 2, w // 2:w],       # D TR
+            work[h // 2:h, 0:w // 2],       # A BL
+            work[h // 2:h, w // 2:w],       # B BR
+            work[0:h // 2, 0:w // 2],       # C TL
+            work[0:h // 2, w // 2:w],       # D TR
         ]
         offsets = [
             (h // 2, 0),
@@ -241,71 +249,272 @@ class MetrologyEngine:
         ]
         centers = []
         radii = []
+        thr_info = []
+        contrasts = []
         for q, (oy, ox) in zip(quads, offsets):
-            cy, cx, r = self._centroid_in_quadrant(q)
+            cy, cx, r, thr = self._centroid_in_quadrant(q, return_thr=True)
             centers.append([cy + oy, cx + ox])
             radii.append(r)
+            thr_info.append(thr)
+            contrasts.append(float(np.percentile(q, 99) - self._quadrant_local_dark(q)))
         centers = np.asarray(centers, dtype=float)
+        radii = np.asarray(radii, dtype=float)
+        contrasts = np.asarray(contrasts, dtype=float)
+
+        # If a quadrant collapsed to a small core (dim pupil / thr too high),
+        # re-find with a deliberately lower threshold targeting the reference area.
+        r_hi = float(np.percentile(radii, 75))
+        for i, q in enumerate(quads):
+            if radii[i] >= 0.55 * r_hi:
+                continue
+            oy, ox = offsets[i]
+            cy, cx, r2, thr2 = self._centroid_in_quadrant_lowthr(
+                q, target_r=r_hi)
+            centers[i] = [cy + oy, cx + ox]
+            radii[i] = r2
+            thr_info[i] = thr2
+
+        # Shared radius: contrast-weighted median (prefer well-lit pupils)
+        wts = np.clip(contrasts, 1.0, None)
+        order = np.argsort(radii)
+        # weighted median
+        rw = radii[order]
+        ww = wts[order]
+        cum = np.cumsum(ww)
+        r_common = float(rw[np.searchsorted(cum, 0.5 * cum[-1])])
+        r_common = max(r_common, 8.0)
+
+        # Pass 2: refine centroids only (keep r_common)
+        refined = []
+        for cy, cx in centers:
+            cy2, cx2 = self._refine_pupil_center(work, cy, cx, r_common)
+            refined.append([cy2, cx2])
+        centers = np.asarray(refined, dtype=float)
+
+        # Soft rectangularization
+        centers = self._rectangularize_pupils(centers)
+
         self.set_pyramid_geometry(centers)
-        self._pupil_radius = float(np.median(radii))
+        self._pupil_radius = r_common
+        self._last_pupil_thresholds = list(thr_info)
+        self._last_provisional_dark = float(dark_global)
         return centers, self._pupil_radius
 
     @staticmethod
+    def _estimate_provisional_dark(frame: np.ndarray) -> float:
+        """Background without lamp-off: corners + global low percentile.
+
+        Uses 8% corner patches and the 5th percentile of the full frame;
+        returns a robust low estimate suitable for Mono12 continuum.
+        """
+        f = np.asarray(frame, dtype=np.float64)
+        h, w = f.shape[:2]
+        ph, pw = max(8, h // 12), max(8, w // 12)
+        corners = np.concatenate([
+            f[:ph, :pw].ravel(),
+            f[:ph, -pw:].ravel(),
+            f[-ph:, :pw].ravel(),
+            f[-ph:, -pw:].ravel(),
+        ])
+        # Reject any corner that accidentally hosts a pupil streak
+        c_med = float(np.median(corners))
+        c_mad = float(np.median(np.abs(corners - c_med))) + 1e-6
+        corner_ok = corners[corners < c_med + 4.0 * c_mad]
+        if corner_ok.size < 16:
+            corner_ok = corners
+        p5 = float(np.percentile(f, 5))
+        corner_p = float(np.percentile(corner_ok, 25))
+        return float(min(p5, corner_p, c_med))
+
+    @staticmethod
+    def _quadrant_local_dark(q: np.ndarray) -> float:
+        """Border-strip background inside one quadrant (provisional)."""
+        q = np.asarray(q, dtype=np.float64)
+        h, w = q.shape[:2]
+        b = max(4, min(h, w) // 16)
+        border = np.concatenate([
+            q[:b, :].ravel(), q[-b:, :].ravel(),
+            q[:, :b].ravel(), q[:, -b:].ravel(),
+        ])
+        return float(np.percentile(border, 20))
+
+    @staticmethod
     def _quadrant_threshold(q: np.ndarray) -> float:
-        """Adaptive bright-pupil threshold for one quadrant."""
+        """Per-quadrant adaptive threshold on (preferably dark-subtracted) data."""
         q = np.asarray(q, dtype=np.float64)
         if q.size == 0 or not np.isfinite(q).any():
             return 0.0
-        # Prefer Otsu (handles continuum + saturated cores)
+        local_dark = MetrologyEngine._quadrant_local_dark(q)
+        # Work relative to local continuum
+        q2 = np.clip(q - local_dark, 0.0, None)
+        # Target bright fraction for a ~circular pupil in a quadrant (~3–20%)
+        frac_lo, frac_hi = 0.02, 0.28
+
         try:
             from skimage.filters import threshold_otsu
-            thr = float(threshold_otsu(q))
-            # Reject pathological Otsu that takes almost everything / nothing
+            thr = float(threshold_otsu(q2)) + local_dark
             frac = float(np.mean(q >= thr))
-            if 0.01 <= frac <= 0.35:
+            if frac_lo <= frac <= frac_hi:
                 return thr
         except Exception:
             pass
-        # Percentile: keep brightest ~10%
-        thr_p = float(np.percentile(q, 90))
-        frac_p = float(np.mean(q >= thr_p))
-        if 0.01 <= frac_p <= 0.35:
-            return thr_p
-        # Robust mid-of-(mean, p99.5) — avoids single saturated max=255
-        hi = float(np.percentile(q, 99.5))
-        return float(q.mean() + 0.5 * (hi - q.mean()))
+
+        # Sweep percentiles for a sensible bright fraction
+        for pct in (85, 88, 90, 92, 80, 75):
+            thr_p = float(np.percentile(q, pct))
+            frac_p = float(np.mean(q >= thr_p))
+            if frac_lo <= frac_p <= frac_hi:
+                return thr_p
+
+        # Background + k·σ of border (captures full disk, not just core)
+        border = q2
+        bh, bw = q2.shape
+        bb = max(4, min(bh, bw) // 16)
+        rim = np.concatenate([
+            q2[:bb, :].ravel(), q2[-bb:, :].ravel(),
+            q2[:, :bb].ravel(), q2[:, -bb:].ravel(),
+        ])
+        sig = float(np.std(rim)) + 1e-6
+        thr_bg = local_dark + 4.0 * sig
+        # Ensure we don't take almost everything
+        if float(np.mean(q >= thr_bg)) > frac_hi:
+            thr_bg = float(np.percentile(q, 90))
+        return float(thr_bg)
 
     @classmethod
-    def _centroid_in_quadrant(cls, q: np.ndarray):
+    def _centroid_in_quadrant(cls, q: np.ndarray, return_thr: bool = False):
         q = np.asarray(q, dtype=np.float64)
         thr = cls._quadrant_threshold(q)
         mask = q >= thr
-        # Largest connected component (drop continuum flecks)
         try:
             from scipy import ndimage as ndi
+            # Fill holes / clean flecks so radius tracks the disk, not the core
+            mask = ndi.binary_opening(mask, iterations=1)
+            mask = ndi.binary_closing(mask, iterations=2)
             labeled, nlab = ndi.label(mask)
             if nlab > 0:
                 sizes = ndi.sum(mask, labeled, index=np.arange(1, nlab + 1))
                 best = int(np.argmax(sizes)) + 1
-                # Require a minimum area (~0.5% of quadrant or 64 px)
                 if sizes[best - 1] >= max(64, 0.005 * q.size):
                     mask = labeled == best
+                    # Fill interior holes for stable area/radius
+                    mask = ndi.binary_fill_holes(mask)
         except Exception:
             pass
         if not np.any(mask):
             yy, xx = np.unravel_index(int(np.argmax(q)), q.shape)
-            return float(yy), float(xx), float(min(q.shape) * 0.2)
+            out = (float(yy), float(xx), float(min(q.shape) * 0.2))
+            return out + (thr,) if return_thr else out
         ys, xs = np.nonzero(mask)
-        # Intensity-weighted centroid (more stable than binary mean)
-        wts = q[ys, xs]
-        wsum = float(wts.sum()) + 1e-12
-        cy = float(np.dot(ys, wts) / wsum)
-        cx = float(np.dot(xs, wts) / wsum)
-        # Radius from enclosed bright area
+        # Binary (unweighted) centroid — intensity weighting collapses onto
+        # saturated cores and mis-centers dimmer pupils relative to bright ones.
+        cy = float(ys.mean())
+        cx = float(xs.mean())
         area = float(mask.sum())
         r = float(np.sqrt(area / np.pi))
         r = max(r, 8.0)
-        return cy, cx, r
+        out = (cy, cx, r)
+        return out + (thr,) if return_thr else out
+
+    @classmethod
+    def _centroid_in_quadrant_lowthr(cls, q: np.ndarray, target_r: float):
+        """Lower-threshold find when the first pass collapsed onto a bright core."""
+        q = np.asarray(q, dtype=np.float64)
+        local_dark = cls._quadrant_local_dark(q)
+        # Aim for area ≈ π target_r²
+        target_frac = float(np.pi * target_r ** 2) / float(q.size)
+        target_frac = float(np.clip(target_frac, 0.03, 0.30))
+        # Choose percentile so bright frac ≈ target
+        pct = float(np.clip(100.0 * (1.0 - target_frac), 60.0, 95.0))
+        thr = float(np.percentile(q, pct))
+        thr = max(thr, local_dark + 2.0)
+        mask = q >= thr
+        try:
+            from scipy import ndimage as ndi
+            mask = ndi.binary_opening(mask, iterations=1)
+            mask = ndi.binary_closing(mask, iterations=2)
+            labeled, nlab = ndi.label(mask)
+            if nlab > 0:
+                sizes = ndi.sum(mask, labeled, index=np.arange(1, nlab + 1))
+                best = int(np.argmax(sizes)) + 1
+                mask = ndi.binary_fill_holes(labeled == best)
+        except Exception:
+            pass
+        if not np.any(mask):
+            return cls._centroid_in_quadrant(q, return_thr=True)
+        ys, xs = np.nonzero(mask)
+        cy, cx = float(ys.mean()), float(xs.mean())
+        r = float(np.sqrt(float(mask.sum()) / np.pi))
+        return cy, cx, max(r, 8.0), thr
+
+    @classmethod
+    def _refine_pupil_center(cls, frame, cy, cx, r_guess):
+        """Refine centroid inside a disk of radius ``r_guess`` (radius unchanged)."""
+        f = np.asarray(frame, dtype=np.float64)
+        h, w = f.shape[:2]
+        r = max(float(r_guess), 16.0)
+        pad = int(round(1.35 * r))
+        y0 = max(0, int(round(cy)) - pad)
+        y1 = min(h, int(round(cy)) + pad)
+        x0 = max(0, int(round(cx)) - pad)
+        x1 = min(w, int(round(cx)) + pad)
+        roi = f[y0:y1, x0:x1]
+        if roi.size < 64:
+            return float(cy), float(cx)
+        yy, xx = np.mgrid[0:roi.shape[0], 0:roi.shape[1]]
+        # Disk centered on pass-1 guess (in ROI coords)
+        cy_l, cx_l = float(cy) - y0, float(cx) - x0
+        disk = (yy - cy_l) ** 2 + (xx - cx_l) ** 2 <= (1.05 * r) ** 2
+        if not np.any(disk):
+            return float(cy), float(cx)
+        # Soft threshold inside disk: above mid of (p30, p70) of disk pixels
+        vals = roi[disk]
+        lo, hi = np.percentile(vals, [30, 70])
+        thr = 0.5 * (lo + hi)
+        mask = disk & (roi >= thr)
+        if mask.sum() < 32:
+            mask = disk & (roi >= np.percentile(vals, 40))
+        if not np.any(mask):
+            mask = disk
+        # Unweighted centroid of mask
+        ys, xs = np.nonzero(mask)
+        return float(ys.mean() + y0), float(xs.mean() + x0)
+
+    @classmethod
+    def _refine_pupil_roi(cls, frame, cy, cx, r_guess, dark_hint=0.0):
+        """Backward-compatible wrapper returning (cy, cx, r)."""
+        cy2, cx2 = cls._refine_pupil_center(frame, cy, cx, r_guess)
+        return cy2, cx2, float(r_guess)
+
+    @staticmethod
+    def _rectangularize_pupils(centers: np.ndarray) -> np.ndarray:
+        """Snap A/B/C/D to a rectangle while preserving the figure's center.
+
+        A=BL, B=BR, C=TL, D=TR. Soft average of opposite sides.
+        """
+        c = np.asarray(centers, dtype=float).reshape(4, 2).copy()
+        # rows: A,B bottom; C,D top
+        y_bot = 0.5 * (c[0, 0] + c[1, 0])
+        y_top = 0.5 * (c[2, 0] + c[3, 0])
+        # cols: A,C left; B,D right
+        x_left = 0.5 * (c[0, 1] + c[2, 1])
+        x_right = 0.5 * (c[1, 1] + c[3, 1])
+        # Only snap if the correction is modest (< 12% of separation) —
+        # avoid inventing geometry when a pupil is truly missing.
+        sep_y = abs(y_bot - y_top) + 1e-6
+        sep_x = abs(x_right - x_left) + 1e-6
+        max_shift = 0.12 * min(sep_x, sep_y)
+        target = np.array([
+            [y_bot, x_left],   # A
+            [y_bot, x_right],  # B
+            [y_top, x_left],   # C
+            [y_top, x_right],  # D
+        ], dtype=float)
+        shift = np.linalg.norm(target - c, axis=1)
+        if float(np.max(shift)) <= max_shift * 2.5:
+            # Strong snap to rectangle — raw find only seeds the side lengths
+            c = 0.9 * target + 0.1 * c
+        return c
 
     def _set_theoretical_tilt_response(self):
         self._mgr.setPyramidTiltResponse(
