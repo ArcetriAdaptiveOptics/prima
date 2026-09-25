@@ -62,6 +62,46 @@ def _actuator_to_grid(cmd: np.ndarray) -> np.ndarray:
     return grid
 
 
+def _actuator_xy() -> tuple[np.ndarray, np.ndarray]:
+    """BMC Fig.7 / MULTI140 user order: 12×12 minus corners → A1…A140."""
+    ys, xs = [], []
+    for r in range(GRID):
+        for c in range(GRID):
+            if (r in (0, GRID - 1)) and (c in (0, GRID - 1)):
+                continue
+            ys.append(r)
+            xs.append(c)
+    return np.asarray(ys, dtype=float), np.asarray(xs, dtype=float)
+
+
+def low_order_mode(kind: str) -> np.ndarray:
+    """Unit-peak Zernike-like mode on the Multi-DM actuator grid.
+
+    ``defocus`` ≈ Noll Z4 (2ρ²−1); ``astig0`` ≈ Z6 (ρ² cos 2θ);
+    ``astig45`` ≈ Z5 (ρ² sin 2θ). Coordinates from BMC manual Fig.7 layout.
+    """
+    ys, xs = _actuator_xy()
+    y = (ys - (GRID - 1) / 2.0) / ((GRID - 1) / 2.0)
+    x = (xs - (GRID - 1) / 2.0) / ((GRID - 1) / 2.0)
+    rho2 = x * x + y * y
+    theta = np.arctan2(y, x)
+    kind = (kind or '').lower()
+    if kind in ('defocus', 'fuoco', 'z4'):
+        m = 2.0 * rho2 - 1.0
+    elif kind in ('astig0', 'astig', 'astigmatism', 'z6'):
+        m = rho2 * np.cos(2.0 * theta)
+    elif kind in ('astig45', 'z5'):
+        m = rho2 * np.sin(2.0 * theta)
+    else:
+        raise ValueError('unknown mode %r' % kind)
+    peak = float(np.max(np.abs(m))) or 1.0
+    return (m / peak).astype(np.float32)
+
+
+# Modest open-loop amplitude about the optical flat (stay in [0,1]).
+MODE_AMP = 0.08
+
+
 STYLESHEET = """
 QMainWindow, QWidget { background-color: #0b1015; color: #e8eef7; }
 QLabel#brand { font-size: 22px; font-weight: 700; color: #7ec8e3; }
@@ -194,6 +234,8 @@ class DmPanelWindow(QMainWindow):
         for label, slot in (
                 ('Zero', self._on_zero),
                 ('Flat mid (0.5)', self._on_flat_mid),
+                ('Defocus (fuoco) ±%.2f' % MODE_AMP, self._on_defocus),
+                ('Astig 0° ±%.2f' % MODE_AMP, self._on_astig),
                 ('Random ±0.05 about mid', self._on_random),
                 ('Checkerboard about mid', self._on_checker),
                 ('Load CSV shape…', self._on_load_csv),
@@ -289,6 +331,26 @@ class DmPanelWindow(QMainWindow):
 
     def _on_flat_mid(self):
         self._apply(np.full(N_ACT, 0.5))
+
+    def _apply_mode_about_flat(self, kind: str):
+        try:
+            flat = load_shipped_flat().astype(float)
+        except Exception as exc:
+            self.statusBar().showMessage('flat load failed: %s' % exc, 8000)
+            return
+        mode = low_order_mode(kind)
+        cmd = np.clip(flat + MODE_AMP * mode, 0.0, 1.0)
+        self._apply(cmd)
+        self.statusBar().showMessage(
+            '%s amp=±%.3f about flat  min=%.3f max=%.3f' % (
+                kind, MODE_AMP, float(cmd.min()), float(cmd.max())),
+            5000)
+
+    def _on_defocus(self):
+        self._apply_mode_about_flat('defocus')
+
+    def _on_astig(self):
+        self._apply_mode_about_flat('astig0')
 
     def _on_random(self):
         rng = np.random.default_rng()
