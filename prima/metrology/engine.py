@@ -28,6 +28,11 @@ DEFAULT_DEMO_PUPIL_RADIUS = 72
 PUPIL_FIND_MOD_MRAD_CANDIDATES = (10.0, 20.0)
 PUPIL_FIND_SETTLE_S = 0.6
 
+# Dark from pixels outside the four pupils. Lab: "overshoot di 120% del
+# diametro" → exclusion disk diameter = 1.2 × pupil diameter → exclusion
+# radius = 1.2 × pupil_radius (20% margin beyond the pupil edge).
+DARK_OUTSIDE_DIAMETER_OVERSHOOT = 1.2
+
 
 class CameraClientAdapter:
     """Adapt DemoCamera / LiveCameraWrapper / pysilico to MeasurementManager."""
@@ -169,6 +174,8 @@ class MetrologyEngine:
         self._measure_history = []
         self._last_pupil_thresholds = []
         self._last_provisional_dark = 0.0
+        self._last_outside_dark = 0.0
+        self._last_outside_dark_n = 0
         self._last_pupil_find_mod_mrad = None
         self._last_pupil_find_note = ''
         # apply default timing coupling like Prisma arbitrator
@@ -300,15 +307,15 @@ class MetrologyEngine:
                     pass
 
     def find_pupils_from_frame(self, frame=None):
-        """Find A/B/C/D pupils with per-quadrant thresholds + provisional dark.
+        """Find A/B/C/D pupils with per-quadrant thresholds + outside-pupil dark.
 
         Order (Prisma): A=BL, B=BR, C=TL, D=TR.
 
-        Dark is estimated without lamp-off from frame-corner patches and
-        per-quadrant border strips (provisional). Each quadrant gets its own
-        adaptive threshold on the dark-subtracted image. Centroids use a
-        two-pass ROI refine and a shared median radius so the four spots stay
-        mutually consistent (near-rectangular layout).
+        Dark: prefer mean of pixels outside the four pupils (exclusion radius
+        = 1.2×r). Falls back to corner/percentile provisional dark when
+        geometry is unknown. Each quadrant gets its own adaptive threshold on
+        the dark-subtracted image. Centroids use a two-pass ROI refine and a
+        shared median radius so the four spots stay mutually consistent.
 
         Prefer ``find_pupils()`` from the GUI so modulation is bumped to
         10/20 mrad for acquisition, then restored.
@@ -328,7 +335,7 @@ class MetrologyEngine:
         frame = np.squeeze(frame)
         h, w = frame.shape[:2]
 
-        dark_global = self._estimate_provisional_dark(frame)
+        dark_global = self._dark_for_frame(frame)
         work = np.clip(frame - dark_global, 0.0, None)
 
         # Pass 1: independent quadrant finds on dark-subtracted frame
@@ -395,7 +402,152 @@ class MetrologyEngine:
         self._pupil_radius = r_common
         self._last_pupil_thresholds = list(thr_info)
         self._last_provisional_dark = float(dark_global)
+        # Refine dark with the newly found geometry (outside 1.2×r disks).
+        try:
+            dark_out, n_out = self.estimate_dark_outside_pupils(
+                frame, centers, pupil_radius=r_common,
+                diameter_overshoot=DARK_OUTSIDE_DIAMETER_OVERSHOOT,
+                return_count=True)
+            self._last_outside_dark = float(dark_out)
+            self._last_outside_dark_n = int(n_out)
+            self._last_provisional_dark = float(dark_out)
+            self._apply_scalar_dark_frame(frame.shape, dark_out)
+        except Exception:
+            pass
         return centers, self._pupil_radius
+
+    def last_outside_dark(self) -> float:
+        """Last estimated outside-pupil dark level (ADU)."""
+        return float(self._last_outside_dark)
+
+    def _dark_for_frame(self, frame: np.ndarray) -> float:
+        """Prefer outside-pupil dark; fall back to provisional corners."""
+        centers = getattr(self, '_pupil_centers', None)
+        radius = float(getattr(self, '_pupil_radius', 0.0) or 0.0)
+        if (centers is not None and np.asarray(centers).shape == (4, 2)
+                and radius > 1.0):
+            try:
+                dark, n = self.estimate_dark_outside_pupils(
+                    frame, centers, pupil_radius=radius,
+                    diameter_overshoot=DARK_OUTSIDE_DIAMETER_OVERSHOOT,
+                    return_count=True)
+                if n >= 64:
+                    self._last_outside_dark = float(dark)
+                    self._last_outside_dark_n = int(n)
+                    return float(dark)
+            except Exception:
+                pass
+        dark = self._estimate_provisional_dark(frame)
+        self._last_provisional_dark = float(dark)
+        return float(dark)
+
+    @staticmethod
+    def estimate_dark_outside_pupils(
+            frame,
+            pupils,
+            diameter_overshoot=DARK_OUTSIDE_DIAMETER_OVERSHOOT,
+            pupil_radius=None,
+            return_count=False):
+        """Estimate dark as the mean of pixels outside the four pupils.
+
+        Geometry (lab "overshoot di 120% del diametro"):
+          pupil radius ``r``, diameter ``d = 2r``.
+          Exclusion disk **diameter** = ``diameter_overshoot × d``
+          → exclusion radius ``r_excl = diameter_overshoot × r``.
+          Default ``diameter_overshoot=1.2`` ⇒ ``r_excl = 1.2 × r``
+          (20% margin beyond the pupil edge). Pixels inside any of the four
+          exclusion disks are ignored; the mean of the rest is the dark.
+
+        Parameters
+        ----------
+        frame : array (H, W)
+        pupils : (4, 2) centers [row, col], or object with centers+radius
+        diameter_overshoot : float
+            Exclusion diameter / pupil diameter (default 1.2).
+        pupil_radius : float, optional
+            Shared pupil radius in pixels (required if ``pupils`` is an array).
+        return_count : bool
+            If True, return ``(dark, n_pixels)``.
+        """
+        f = np.asarray(frame, dtype=np.float64)
+        f = np.squeeze(f)
+        if f.ndim != 2:
+            raise ValueError('frame must be 2-D, got shape %s' % (f.shape,))
+        h, w = f.shape
+
+        if pupils is None:
+            raise ValueError('pupils (centers) required')
+        if hasattr(pupils, 'pupilCenters'):
+            centers = np.asarray(pupils.pupilCenters, dtype=float).reshape(4, 2)
+        else:
+            centers = np.asarray(pupils, dtype=float).reshape(4, 2)
+        r = float(pupil_radius) if pupil_radius is not None else None
+        if r is None or not np.isfinite(r) or r <= 0:
+            raise ValueError('pupil_radius must be a positive float')
+
+        overshoot = float(diameter_overshoot)
+        if overshoot <= 0:
+            raise ValueError('diameter_overshoot must be > 0')
+        # exclusion diameter = overshoot × pupil diameter → r_excl = overshoot × r
+        r_excl = overshoot * r
+        r2 = r_excl * r_excl
+
+        yy = np.arange(h, dtype=np.float64)[:, None]
+        xx = np.arange(w, dtype=np.float64)[None, :]
+        outside = np.ones((h, w), dtype=bool)
+        for cy, cx in centers:
+            outside &= ((yy - float(cy)) ** 2 + (xx - float(cx)) ** 2) >= r2
+
+        vals = f[outside]
+        # Drop non-finite; use robust mean (trim extreme high streaks)
+        vals = vals[np.isfinite(vals)]
+        n = int(vals.size)
+        if n < 64:
+            dark = MetrologyEngine._estimate_provisional_dark(f)
+        else:
+            # Trim top 1% (stray light / dust spikes in "outside")
+            hi = float(np.percentile(vals, 99))
+            lo = float(np.percentile(vals, 1))
+            core = vals[(vals >= lo) & (vals <= hi)]
+            dark = float(np.mean(core if core.size else vals))
+        if return_count:
+            return dark, n
+        return dark
+
+    def refresh_dark_outside_pupils(self, frame=None,
+                                    diameter_overshoot=None):
+        """Estimate outside-pupil dark and install it on MeasurementManager."""
+        if frame is None:
+            if hasattr(self._camera_raw, 'getFrame'):
+                raw = self._camera_raw.getFrame()
+            elif hasattr(self._camera_raw, 'getRawFrame'):
+                raw = self._camera_raw.getRawFrame()
+            else:
+                raw = self._camera_raw.getFrameForDisplay()
+            if hasattr(raw, 'toNumpyArray'):
+                raw = raw.toNumpyArray()
+            frame = np.asarray(raw, dtype=np.float64)
+        frame = np.squeeze(np.asarray(frame, dtype=np.float64))
+        overshoot = float(
+            DARK_OUTSIDE_DIAMETER_OVERSHOOT
+            if diameter_overshoot is None else diameter_overshoot)
+        dark, n = self.estimate_dark_outside_pupils(
+            frame, self._pupil_centers, pupil_radius=self._pupil_radius,
+            diameter_overshoot=overshoot, return_count=True)
+        self._last_outside_dark = float(dark)
+        self._last_outside_dark_n = int(n)
+        self._last_provisional_dark = float(dark)
+        self._apply_scalar_dark_frame(frame.shape, dark)
+        return float(dark)
+
+    def _apply_scalar_dark_frame(self, shape, dark_adu):
+        """Install a constant dark frame for MeasurementManager subtraction."""
+        sh = tuple(int(x) for x in shape[:2])
+        arr = np.full(sh, float(dark_adu), dtype=np.float64)
+        try:
+            self._mgr.setDarkFrame(CameraFrame(arr))
+        except Exception:
+            pass
 
     @staticmethod
     def _estimate_provisional_dark(frame: np.ndarray) -> float:
@@ -403,6 +555,7 @@ class MetrologyEngine:
 
         Uses 8% corner patches and the 5th percentile of the full frame;
         returns a robust low estimate suitable for Mono12 continuum.
+        Fallback when pupil geometry is unknown / outside mask is empty.
         """
         f = np.asarray(frame, dtype=np.float64)
         h, w = f.shape[:2]
@@ -661,6 +814,11 @@ class MetrologyEngine:
 
     def take_measurement(self, frames_to_average=3, apply_automatic_mask=True,
                          circular_mask=None, remove_zernikes=None):
+        # Refresh outside-pupil dark so slopes use a current continuum estimate.
+        try:
+            self.refresh_dark_outside_pupils()
+        except Exception:
+            pass
         meas = self._mgr.takeAMeasurement(
             int(frames_to_average), snapshot={}, storeMeasurement=True)
         meas.setModalDecomposer(ModalDecomposer())
