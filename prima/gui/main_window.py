@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import sys
+import time
 import numpy as np
 import pyqtgraph as pg
 from PyQt5.QtCore import Qt, QTimer
@@ -875,9 +876,29 @@ class MainWindow(QMainWindow):
                 pupil_max = float(np.nanmax(bright)) if bright.size else max_adu
                 frac_sat = float(np.mean(flat >= (full_well - 1)))
                 sat = frac_sat > 1e-4 or pupil_max >= (0.98 * full_well)
+                # Outside-pupil dark (1.2×r exclusion); raw display stays Mono12.
+                dark_adu = None
+                try:
+                    eng = getattr(self, '_engine', None)
+                    if eng is not None and hasattr(
+                            eng, 'estimate_dark_outside_pupils'):
+                        # Throttle: reuse last if centers known; refresh ~1 Hz
+                        now = time.time()
+                        last_t = getattr(self, '_dark_est_t', 0.0)
+                        if now - last_t > 1.0:
+                            d = eng.estimate_dark_outside_pupils(
+                                frame, eng.pupil_centers(),
+                                pupil_radius=eng.pupil_radius())
+                            eng._last_outside_dark = float(d)
+                            self._dark_est_t = now
+                        dark_adu = float(eng.last_outside_dark())
+                except Exception:
+                    dark_adu = None
                 adu_txt = (
                     'mean=%.0f  max=%.0f  pupil≈%.0f (p90+) peak=%.0f / %d' % (
                         mean_adu, max_adu, pupil_mean, pupil_max, full_well))
+                if dark_adu is not None and np.isfinite(dark_adu):
+                    adu_txt += '  dark≈%.0f ADU (outside 1.2×r)' % dark_adu
                 if sat:
                     adu_txt += '  ⚠ SATURATED — raise f_mod or unlock+cut exp / ND'
                     self._adu_info.setObjectName('matchBad')
@@ -925,12 +946,16 @@ class MainWindow(QMainWindow):
             self._refresh_pupil_overlay()
             note = getattr(self._engine, '_last_pupil_find_note', '') or ''
             used = getattr(self._engine, '_last_pupil_find_mod_mrad', None)
+            dark = getattr(self._engine, '_last_outside_dark', None)
+            dark_s = (
+                ' · dark≈%.0f ADU' % float(dark)
+                if dark is not None and np.isfinite(float(dark)) else '')
             self._status.showMessage(
                 'Pupils found · r=%.1f px · %d spots · find-mod=%s mrad '
-                '(restored %.1f) %s' % (
+                '(restored %.1f)%s %s' % (
                     radius, len(centers),
                     ('%.0f' % used) if used is not None else '—',
-                    prev, note))
+                    prev, dark_s, note))
         except Exception as e:
             QMessageBox.warning(self, 'Find pupils', str(e))
 
