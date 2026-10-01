@@ -15,7 +15,8 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from prima.drop1_defaults import (
-    DEFAULT_EXPOSURE_MS, DEFAULT_MOD_FREQ_HZ, DEFAULT_MOD_RADIUS_MRAD)
+    DEFAULT_MOD_FREQ_HZ, DEFAULT_MOD_RADIUS_MRAD,
+    exposure_ms_one_mod_period)
 from prima.flattening.pupils import (
     find_pupils_both, find_pupils_opticalib, find_pupils_prima, compare_geometries)
 from prima.flattening.scripts._common import (
@@ -108,7 +109,8 @@ def main(argv=None) -> int:
             except Exception:
                 pass
         cam = AravisLiveCamera(ip_address='192.168.30.189')
-        cam.setExposureTime(float(DEFAULT_EXPOSURE_MS))
+        # Sync exposure to one modulator period (t_exp = 1/f_mod)
+        cam.setExposureTime(float(exposure_ms_one_mod_period(DEFAULT_MOD_FREQ_HZ)))
         time.sleep(0.4)
         frame = np.mean(
             [np.asarray(cam.getFrame(), dtype=float) for _ in range(4)], 0)

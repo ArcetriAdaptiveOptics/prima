@@ -9,7 +9,8 @@ import numpy as np
 
 from prima.drop1_defaults import (
     DEFAULT_E518_HOST, DEFAULT_E518_PORT, DEFAULT_EXPOSURE_MS,
-    DEFAULT_MANTA_IP, DEFAULT_MOD_FREQ_HZ, DEFAULT_MOD_RADIUS_MRAD)
+    DEFAULT_MANTA_IP, DEFAULT_MOD_FREQ_HZ, DEFAULT_MOD_RADIUS_MRAD,
+    exposure_ms_one_mod_period)
 from prima.flattening.devices.aravis_camera import AravisCamera
 from prima.flattening.devices.bmc_dm import BmcMultiDm
 from prima.flattening.devices.live_pyramid import LivePyramid
@@ -58,7 +59,8 @@ def open_live_stack(
         park_dm: bool = True,
         radius_mrad: float = DEFAULT_MOD_RADIUS_MRAD,
         freq_hz: float = DEFAULT_MOD_FREQ_HZ,
-        exposure_ms: float = DEFAULT_EXPOSURE_MS,
+        exposure_ms: float | None = None,
+        lock_exp_to_mod: bool = True,
         geometry_dir=None,
         autocenter: bool = True,
         autocenter_duration_s: float = 8.0,
@@ -70,6 +72,9 @@ def open_live_stack(
     PWFS pupils are not flux-saturated). Pass ``autocenter=False`` only for
     diagnostics. When ``geometry_dir`` has ``mod_center_mrad.npy``, that
     center is restored instead of re-running autocenter (IFF/flatten match).
+
+    Exposure defaults to **one modulator period** ``t_exp = 1000/f_mod`` ms
+    (``lock_exp_to_mod=True``). Pass ``exposure_ms=...`` to override.
     """
     dm = BmcMultiDm(prefer=prefer, dry_run=False)
     if park_dm:
@@ -84,6 +89,15 @@ def open_live_stack(
     except Exception:
         pass
     time.sleep(0.8)
+    if exposure_ms is None:
+        if lock_exp_to_mod:
+            exposure_ms = exposure_ms_one_mod_period(freq_hz)
+        else:
+            exposure_ms = float(DEFAULT_EXPOSURE_MS)
+    else:
+        exposure_ms = float(exposure_ms)
+    print('camera t_exp=%.2f ms  (1/f_mod=%.2f ms, lock=%s)' % (
+        exposure_ms, exposure_ms_one_mod_period(freq_hz), lock_exp_to_mod))
     cam = AravisCamera(ip_address=DEFAULT_MANTA_IP, exposure_ms=exposure_ms)
     time.sleep(0.3)
     wfs = LivePyramid(cam, modulator=mod, nframes=2, detect_threshold=400.0)
