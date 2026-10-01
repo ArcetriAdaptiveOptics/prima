@@ -87,10 +87,12 @@ def run_autocenter(
     peak0 = _frame_peak(frame0) if frame0 is not None else float('nan')
     c0 = np.asarray(engine._mod.getCenterInMilliRad(), dtype=float).ravel()[:2]
 
-    t_end = time.time() + float(duration_s)
+    # Prefer a fixed step count (measure() can exceed period_s on live HW).
+    n_target = max(3, int(round(float(duration_s) / max(float(period_s), 1e-3))))
     n = 0
     tip = tilt = 0.0
-    while time.time() < t_end:
+    for _ in range(n_target):
+        t0 = time.time()
         engine.take_measurement(
             frames_to_average=1, apply_automatic_mask=True,
             remove_zernikes=[2, 3])
@@ -100,7 +102,8 @@ def run_autocenter(
         new = np.clip(new, -float(max_center_mrad), float(max_center_mrad))
         engine.set_modulation_center_mrad(new)
         n += 1
-        time.sleep(max(0.0, float(period_s)))
+        dt = time.time() - t0
+        time.sleep(max(0.0, float(period_s) - dt))
 
     notes = 'zernike tip/tilt null %d steps' % n
 
