@@ -1,6 +1,10 @@
 """Live PWFS slopes: opticalib ``Pyramid`` over Prima ``AravisCamera``.
 
-Falls back to Prima ``MetrologyEngine`` slopes if opticalib pupil detect fails.
+Pupil geometry can come from either path (kept in parallel):
+  - ``opticalib``: ``PyramidPupilData.from_img`` (square-fit)
+  - ``metrology`` / ``prima``: ``MetrologyEngine.find_pupils_from_frame``
+
+Slopes use opticalib Pyramid when indpup is valid; otherwise MetrologyEngine.
 """
 from __future__ import annotations
 
@@ -10,6 +14,8 @@ from opticalib.devices._API.base_devices import BaseWavefrontSensor
 from opticalib.devices.wfs import Pyramid
 
 from prima.flattening.devices.aravis_camera import AravisCamera
+from prima.flattening.pupils import (
+    PupilGeometry, find_pupils_opticalib, find_pupils_prima)
 from prima.metrology.engine import MetrologyEngine
 
 
@@ -22,6 +28,7 @@ class LivePyramid(BaseWavefrontSensor):
             detect_threshold: float = 400.0,
             nframes: int = 2,
             use_metrology_fallback: bool = True,
+            pupil_method: str = 'auto',
             modulator=None,
     ):
         self._name = 'LivePyramid'
@@ -29,8 +36,11 @@ class LivePyramid(BaseWavefrontSensor):
         self._nframes = max(1, int(nframes))
         self._pyr = Pyramid(camera)
         self._pyr.detect_threshold = float(detect_threshold)
+        self._detect_threshold = float(detect_threshold)
         self._pupils_ready = False
         self._use_metrology = bool(use_metrology_fallback)
+        # auto | opticalib | prima  — auto prefers opticalib indpup, else prima
+        self._pupil_method = str(pupil_method or 'auto').lower()
         self._eng: MetrologyEngine | None = None
         self._modulator = modulator
         self._mode = 'opticalib'
@@ -38,6 +48,8 @@ class LivePyramid(BaseWavefrontSensor):
         self._n_slopes: int | None = None
         self._centers: np.ndarray | None = None
         self._radius: float | None = None
+        self._geo_opticalib: PupilGeometry | None = None
+        self._geo_prima: PupilGeometry | None = None
 
     def save_geometry(self, path) -> None:
         """Persist metrology pupils + frozen slope mask for IFF reopen."""
@@ -79,38 +91,71 @@ class LivePyramid(BaseWavefrontSensor):
         return True
 
     def ensure_pupils(self, detect: bool = True) -> str:
-        """Detect pupil geometry. Returns mode used (``opticalib`` / ``metrology``)."""
-        if self._pupils_ready and self._eng is not None and self._mode == 'metrology':
+        """Detect pupil geometry. Returns slope backend (``opticalib`` / ``metrology``)."""
+        if self._pupils_ready and not detect:
             return self._mode
         frame = np.asarray(
             self._camera.acquire_frames(self._nframes), dtype=float)
-        if detect:
-            try:
-                self._pyr._detect_pupils(frame)
-                n_sub = int(self._pyr.pupil_info.n_subap)
-                if n_sub < 8:
-                    raise RuntimeError('too few subaps: %d' % n_sub)
-                self._pupils_ready = True
-                self._mode = 'opticalib'
-                print('LivePyramid opticalib n_subap=%d avg_d=%.1f' % (
-                    n_sub, self._pyr.pupil_info.avg_d))
-                return self._mode
-            except Exception as exc:
-                print('opticalib pupil detect failed:', exc)
 
-        if not self._use_metrology:
+        # Always measure both when possible (kept in parallel for crosscheck).
+        try:
+            self._geo_opticalib = find_pupils_opticalib(
+                frame, threshold=self._detect_threshold)
+            print('LivePyramid opticalib pupils r=%.1f %s' % (
+                self._geo_opticalib.radius, self._geo_opticalib.notes))
+        except Exception as exc:
+            self._geo_opticalib = None
+            print('opticalib pupil detect failed:', exc)
+        try:
+            self._geo_prima = find_pupils_prima(frame)
+            print('LivePyramid prima pupils r=%.1f' % self._geo_prima.radius)
+        except Exception as exc:
+            self._geo_prima = None
+            print('prima pupil detect failed:', exc)
+
+        prefer = self._pupil_method
+        use_opt = False
+        if prefer in ('opticalib', 'auto') and self._geo_opticalib is not None:
+            ind_ok = bool(self._geo_opticalib.extras.get('indpup_ok'))
+            if prefer == 'opticalib' or ind_ok:
+                # Wire Pyramid pupil_data for opticalib slopes
+                try:
+                    if self._geo_opticalib.pupil_data is not None:
+                        self._pyr._pupil_data = self._geo_opticalib.pupil_data
+                        self._pyr.pupdata = self._geo_opticalib.pupil_data
+                        # Touch indpup to ensure intersection works
+                        _ = self._pyr.pupil_info.n_subap
+                        use_opt = True
+                except Exception as exc:
+                    print('opticalib indpup not usable for slopes:', exc)
+                    use_opt = False
+
+        if use_opt and self._geo_opticalib is not None:
+            self._centers = self._geo_opticalib.as_yx()
+            self._radius = float(self._geo_opticalib.radius)
+            self._pupils_ready = True
+            self._mode = 'opticalib'
+            return self._mode
+
+        if not self._use_metrology and prefer == 'opticalib':
+            raise RuntimeError('Pyramid pupils not ready (opticalib)')
+        if self._geo_prima is None and prefer != 'opticalib':
+            # last resort: MetrologyEngine on frame
+            self._eng = MetrologyEngine(
+                camera=self._camera._cam, modulator=self._modulator)
+            self._geo_prima = find_pupils_prima(frame, engine=self._eng)
+        if self._geo_prima is None:
             raise RuntimeError('Pyramid pupils not ready')
         self._eng = MetrologyEngine(
             camera=self._camera._cam, modulator=self._modulator)
-        centers, r = self._eng.find_pupils_from_frame(frame)
-        self._eng.set_pyramid_geometry(centers)
-        self._eng.set_pupil_radius(r)
-        self._centers = np.asarray(centers, dtype=float)
-        self._radius = float(r)
+        self._eng.set_pyramid_geometry(self._geo_prima.centers)
+        self._eng.set_pupil_radius(self._geo_prima.radius)
+        self._centers = self._geo_prima.as_yx()
+        self._radius = float(self._geo_prima.radius)
         self._pupils_ready = True
         self._mode = 'metrology'
-        print('LivePyramid MetrologyEngine pupils r=%.1f centers=\n%s' % (
-            r, centers))
+        print('LivePyramid using metrology/prima slopes backend r=%.1f' % (
+            self._radius))
         return self._mode
 
     @property
