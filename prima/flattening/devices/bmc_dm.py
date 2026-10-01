@@ -21,12 +21,60 @@ DEFAULT_MAX_STEP = 0.15
 DEFAULT_PARK_RAMP_S = 0.4
 
 
+class _DaoShmBackend:
+    """Write shapes to ``/tmp/prima_dm1Cmd.im.shm`` for ``daodm_bmc_ctrl``."""
+
+    def __init__(self):
+        from daoprima.create_shm import create_default_graph
+        from daoprima.bridges import ShmCommandWriter
+        create_default_graph()
+        self._writer = ShmCommandWriter()
+        self.n_actuators = int(N_ACT)
+        self.serial = 'DAO-SHM'
+        self.backend = 'dao-shm'
+
+    def send_data(self, cmd) -> None:
+        self._writer.set_shape(cmd)
+        # Let daodm_bmc_ctrl poll (~few ms) before next poke.
+        time.sleep(0.015)
+
+    def get_actuator_data(self) -> np.ndarray:
+        return np.asarray(self._writer.get_shape(), dtype=float)
+
+    def close(self) -> None:
+        return
+
+
+def _open_hw(prefer: str, serial: str, map_name: str):
+    """Open USB/vendor/sim, or DAO SHM when ``prefer`` is dao/shm."""
+    pref = (prefer or 'auto').lower()
+    if pref in ('dao', 'shm', 'dao-shm'):
+        return _DaoShmBackend()
+    if pref == 'auto':
+        try:
+            return open_bmc_dm(prefer='usb', serial=serial, map_name=map_name)
+        except Exception as usb_exc:
+            # USB often held by daodm_bmc_ctrl — use SHM path.
+            print('BMC USB open failed (%s); using dao-shm' % usb_exc)
+            return _DaoShmBackend()
+    hw = open_bmc_dm(prefer=pref, serial=serial, map_name=map_name)
+    # Never silently use in-process sim for live flattening.
+    if getattr(hw, 'backend', None) == 'sim' and pref not in ('sim',):
+        print('open_bmc_dm returned sim; switching to dao-shm')
+        try:
+            hw.close()
+        except Exception:
+            pass
+        return _DaoShmBackend()
+    return hw
+
+
 class BmcMultiDm(BaseDeformableMirror):
     """140-act BMC Multi-DM for opticalib IFF / flattening."""
 
     def __init__(
             self,
-            prefer: str = 'auto',
+            prefer: str = 'dao',
             serial: str = 'C30W052088',
             map_name: str = 'MULTI140.map',
             bias: np.ndarray | None = None,
@@ -45,6 +93,7 @@ class BmcMultiDm(BaseDeformableMirror):
         self._linearize_sqrt = bool(linearize_sqrt)
         self._dry_run = bool(dry_run)
         self._owns_hw = hw is None
+        self._prefer = str(prefer)
 
         if bias is not None:
             self._bias = np.asarray(bias, dtype=float).ravel()
@@ -60,8 +109,7 @@ class BmcMultiDm(BaseDeformableMirror):
         elif dry_run:
             self._hw = None
         else:
-            self._hw = open_bmc_dm(
-                prefer=prefer, serial=serial, map_name=map_name)
+            self._hw = _open_hw(prefer, serial, map_name)
 
         # Absolute drive currently held (about [0,1]).
         self._cmd = self._bias.copy()
@@ -187,7 +235,12 @@ class BmcMultiDm(BaseDeformableMirror):
             self._hw = None
 
     def __repr__(self) -> str:
-        backend = 'dry-run' if self._dry_run or self._hw is None else getattr(
-            self._hw, 'backend', '?')
+        if self._dry_run or self._hw is None:
+            backend = 'dry-run'
+        else:
+            backend = getattr(self._hw, 'backend', None)
+            if backend is None and hasattr(self._hw, 'info'):
+                backend = getattr(self._hw.info, 'backend', '?')
+            backend = backend or '?'
         return 'BmcMultiDm(n=%d, backend=%s, sqrt=%s)' % (
             self.n_acts, backend, self._linearize_sqrt)
