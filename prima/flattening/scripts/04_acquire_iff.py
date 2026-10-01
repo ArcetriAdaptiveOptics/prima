@@ -29,6 +29,11 @@ def main(argv=None) -> int:
     p.add_argument('--settle', type=float, default=0.08)
     p.add_argument('--prefer', default='dao')
     p.add_argument('--out', default=None, help='Directory for npy cube')
+    p.add_argument(
+        '--no-autocenter', action='store_true',
+        help='Skip pre-IFF autocenter (NOT recommended — pupils may saturate)')
+    p.add_argument('--autocenter-duration', type=float, default=8.0,
+                   help='Auto Align duration seconds (default 8, like GUI)')
     args = p.parse_args(argv)
     dry = is_dry_run(args)
     stack = None
@@ -43,12 +48,20 @@ def main(argv=None) -> int:
         centers, radius = None, None
     else:
         from prima.flattening.scripts._hw import open_live_stack
-        stack = open_live_stack(prefer=args.prefer, park_dm=True)
+        # Autocenter BEFORE IFF — otherwise PWFS pupils saturate / unbalanced
+        stack = open_live_stack(
+            prefer=args.prefer, park_dm=True,
+            autocenter=not args.no_autocenter,
+            autocenter_duration_s=args.autocenter_duration)
         dm, wfs = stack.dm, stack.wfs
         mode = 'live/%s' % wfs.mode
         frame = np.asarray(wfs.acquire_detector(2), dtype=float)
         centers = getattr(wfs, '_centers', None)
         radius = getattr(wfs, '_radius', None)
+        if stack.autocenter_result is not None:
+            ac = stack.autocenter_result
+            print('IFF will use mod center (mrad) %.3f, %.3f after autocenter' % (
+                ac.center_after[0], ac.center_after[1]))
 
     n_modes = min(int(args.n_modes), dm.n_acts)
     modes = np.arange(n_modes)
@@ -153,11 +166,13 @@ def main(argv=None) -> int:
         '## Acquire (04) — Hadamard\n'
         '- mode: **%s**\n'
         '- modal_base: **%s** (opticalib-compatible)\n'
+        '- autocenter: **yes** (pre-IFF; see `flatten-vis-autocenter-*.png`)\n'
         '- amp: %.3f settle: %.3f n_modes: %d\n'
         '- IM shape: %s\n'
         '- cube: `%s`\n'
         '- col_rms[min,max,mean]: %.4g %.4g %.4g\n'
         '\n### Crosscheck media\n'
+        '- `media/flatten-vis-autocenter-before.png` / `-after.png`\n'
         '- `media/flatten-vis-hadamard-pupils.png` — Manta + pupil overlays\n'
         '- `media/flatten-vis-hadamard-manta.png` — Manta frame mid-setup\n'
         '- `media/flatten-vis-hadamard-mode0.png` / `mode1.png` — Hadamard patterns\n'
