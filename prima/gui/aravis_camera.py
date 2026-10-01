@@ -12,10 +12,17 @@ import time
 import numpy as np
 
 
-DEFAULT_MANTA_IP = '192.168.30.189'
+from prima.drop1_defaults import (
+    DEFAULT_MANTA_IP as _DROP1_MANTA_IP,
+    DEFAULT_PIXEL_FORMAT as _DROP1_PIXEL_FORMAT,
+    CAMERA_FULL_WIDTH,
+    CAMERA_FULL_HEIGHT,
+)
+
+DEFAULT_MANTA_IP = _DROP1_MANTA_IP
 # Full-well for Mono12 (right-aligned in 16-bit words).
 MONO12_FULL_WELL = 4095
-PREFERRED_PIXEL_FORMAT = 'Mono12'
+PREFERRED_PIXEL_FORMAT = _DROP1_PIXEL_FORMAT
 
 
 class AravisLiveCamera:
@@ -70,6 +77,7 @@ class AravisLiveCamera:
                 except Exception:
                     pass
                 self._configure_pixel_format()
+                self._ensure_full_frame()
                 try:
                     self._cam.set_string('AcquisitionMode', 'Continuous')
                 except Exception:
@@ -131,6 +139,28 @@ class AravisLiveCamera:
             self._full_well = MONO12_FULL_WELL
             self._bytes_per_pixel = 2
         self._name = 'Aravis@%s [%s]' % (self._ip, self._pixel_format)
+
+    def _ensure_full_frame(self):
+        """Force sensor ROI to full frame (default 2048×2048 Mono12)."""
+        w_want = int(CAMERA_FULL_WIDTH)
+        h_want = int(CAMERA_FULL_HEIGHT)
+        # Offset first (some GenICam cams reject Width while offset non-zero).
+        for feat, val in (
+                ('OffsetX', 0), ('OffsetY', 0),
+                ('Width', w_want), ('Height', h_want)):
+            try:
+                self._cam.set_integer(feat, int(val))
+            except Exception:
+                try:
+                    self._cam.set_float(feat, float(val))
+                except Exception:
+                    pass
+        try:
+            x, y, w, h = self._cam.get_region()
+            self._name = 'Aravis@%s [%s %dx%d]' % (
+                self._ip, self._pixel_format, w, h)
+        except Exception:
+            pass
 
     def _decode_buffer(self, data, w, h):
         """Decode GigE buffer → uint16 ADU in [0, full_well]."""
