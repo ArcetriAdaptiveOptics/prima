@@ -11,6 +11,11 @@ from prima.metrology.types.pyramid_tilt_response import PyramidTiltResponse
 from prima.metrology.modal_decomposer import ModalDecomposer
 from prima.metrology.arbitrator.measurement_manager import MeasurementManager
 from prima.demo.backends import DemoCamera, DemoModulator
+from prima.drop1_defaults import (
+    DEFAULT_EXPOSURE_MS as _DROP1_EXPOSURE_MS,
+    DEFAULT_MOD_RADIUS_MRAD as _DROP1_MOD_RADIUS_MRAD,
+    DEFAULT_MOD_FREQ_HZ as _DROP1_MOD_FREQ_HZ,
+)
 
 
 # Demo pupil centers [row, col] matching DemoCamera 4-spot layout (512²)
@@ -148,8 +153,9 @@ class ModulatorClientAdapter:
 class MetrologyEngine:
     """Prisma-like local arbitrator used by Drop 1 GUI."""
 
-    DEFAULT_EXPOSURE_MS = 1.0
-    DEFAULT_MOD_RADIUS_MRAD = 1.5
+    # Lab work-mode defaults (prima.drop1_defaults / conf/drop1-lab.conf).
+    DEFAULT_EXPOSURE_MS = float(_DROP1_EXPOSURE_MS)
+    DEFAULT_MOD_RADIUS_MRAD = float(_DROP1_MOD_RADIUS_MRAD)
     DEFAULT_FIBER_UM = 600.0
     PUPIL_SCALE_M_PER_PX = 8.25e-6
 
@@ -178,8 +184,16 @@ class MetrologyEngine:
         self._last_outside_dark_n = 0
         self._last_pupil_find_mod_mrad = None
         self._last_pupil_find_note = ''
-        # apply default timing coupling like Prisma arbitrator
-        self.set_exposure_ms(self.DEFAULT_EXPOSURE_MS)
+        # Lab work-mode defaults (unlocked exp + independent f_mod).
+        # Do NOT call set_exposure_ms here — that forces f=1/t_exp.
+        try:
+            self._cam.setExposureTime(float(self.DEFAULT_EXPOSURE_MS))
+        except Exception:
+            pass
+        try:
+            self._mod.setFrequencyInHz(float(_DROP1_MOD_FREQ_HZ))
+        except Exception:
+            pass
         self.set_modulation_radius_mrad(self.DEFAULT_MOD_RADIUS_MRAD)
 
     def rebind(self, camera=None, modulator=None):

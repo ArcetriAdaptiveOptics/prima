@@ -24,6 +24,13 @@ from prima.metrology.engine import (
     MetrologyEngine, MODULATION_GAIN_PRESETS_MRAD)
 from prima.metrology.types.mask import CircularMask
 from prima.hardware import MAX_SAFE_RADIUS_MRAD
+from prima.drop1_defaults import (
+    DEFAULT_MOD_RADIUS_MRAD,
+    DEFAULT_MOD_FREQ_HZ,
+    DEFAULT_EXPOSURE_MS,
+    DEFAULT_LOCK_EXP_TO_FREQ,
+    DEFAULT_DISPLAY_ROI,
+)
 
 
 pg.setConfigOptions(imageAxisOrder='row-major', antialias=True)
@@ -105,7 +112,7 @@ class MainWindow(QMainWindow):
         self._camera = cam
         self._modulator = mod
         self._engine = MetrologyEngine(camera=cam, modulator=mod)
-        self._roi = (0, 0, 512, 512)
+        self._roi = tuple(int(x) for x in DEFAULT_DISPLAY_ROI)
         self._sync_dlg = None
         self._measure_enabled = False
         # Debounce hardware apply while dragging spins (safe for E-518).
@@ -311,20 +318,19 @@ class MainWindow(QMainWindow):
         self._exp_spin.setRange(0.1, 5000.0)
         self._exp_spin.setDecimals(2)
         self._exp_spin.setSuffix(' ms')
-        self._exp_spin.setValue(1.0)
+        self._exp_spin.setValue(float(DEFAULT_EXPOSURE_MS))
         self._exp_spin.valueChanged.connect(self._on_exposure_changed)
         self._fps_label = QLabel('—')
         self._period_label = QLabel('—')
         self._match_label = QLabel('—')
         self._lock_exp = QCheckBox('Lock t_exp = 1/f_mod')
-        # Default OFF under bright lab light: locked 100 Hz → 10 ms clips Mono12
-        # near 4095. Enable lock when illumination / ND allows t_exp=1/f.
-        self._lock_exp.setChecked(False)
+        # Default from drop1_defaults (unlocked) so Mono12 stays unsaturated.
+        self._lock_exp.setChecked(bool(DEFAULT_LOCK_EXP_TO_FREQ))
         self._lock_exp.setToolTip(
             'When locked, exposure follows frequency (t_exp = 1/f_mod). '
-            'Under current lab light, keep unlocked and set ~1 ms so Mono12 '
-            'pupils peak near 60–80% of 4095 ADU (not clipped). '
-            'Radius never touches exposure.')
+            'Lab default is unlocked at ~%.1f ms so Mono12 pupils peak '
+            'well below 4095 ADU at R=%.0f mrad. Radius never touches exposure.'
+            % (DEFAULT_EXPOSURE_MS, DEFAULT_MOD_RADIUS_MRAD))
         self._lock_exp.stateChanged.connect(self._on_lock_toggled)
         form.addRow('Exposure', self._exp_spin)
         form.addRow('Frame rate', self._fps_label)
@@ -347,7 +353,12 @@ class MainWindow(QMainWindow):
             s.setRange(0, 4096)
         for s in (self._roi_w, self._roi_h):
             s.setRange(32, 4096)
-            s.setValue(512)
+        # Lab default: full-frame display crop (matches sensor 2048×2048).
+        rx, ry, rw, rh = (int(x) for x in DEFAULT_DISPLAY_ROI)
+        self._roi_x.setValue(rx)
+        self._roi_y.setValue(ry)
+        self._roi_w.setValue(rw)
+        self._roi_h.setValue(rh)
         for s in (self._roi_x, self._roi_y, self._roi_w, self._roi_h):
             s.valueChanged.connect(self._on_roi_changed)
         form.addRow('X0', self._roi_x)
@@ -367,14 +378,13 @@ class MainWindow(QMainWindow):
         self._freq_spin.setRange(0.1, 500.0)
         self._freq_spin.setDecimals(2)
         self._freq_spin.setSuffix(' Hz')
-        # Typical PWFS modulation; exposure is unlocked by default so Mono12
-        # can sit near ~50–70% of 4095 without forcing f_mod into kHz.
-        self._freq_spin.setValue(100.0)
+        # Lab work-mode (prima.drop1_defaults / conf/drop1-lab.conf).
+        self._freq_spin.setValue(float(DEFAULT_MOD_FREQ_HZ))
         self._radius_spin = QDoubleSpinBox()
         self._radius_spin.setRange(0.0, float(MAX_SAFE_RADIUS_MRAD))
         self._radius_spin.setDecimals(3)
         self._radius_spin.setSuffix(' mrad')
-        self._radius_spin.setValue(1.5)
+        self._radius_spin.setValue(float(DEFAULT_MOD_RADIUS_MRAD))
         self._radius_spin.setToolTip(
             'Modulation radius (safe max %.0f mrad for S-334/E-518)'
             % MAX_SAFE_RADIUS_MRAD)
@@ -424,7 +434,7 @@ class MainWindow(QMainWindow):
             btn.setProperty('gain_mrad', g)
             self._gain_group.addButton(btn, i)
             lay.addWidget(btn)
-            if abs(g - 1.0) < 1e-9:
+            if abs(g - float(DEFAULT_MOD_RADIUS_MRAD)) < 1e-9:
                 btn.setChecked(True)
             btn.clicked.connect(self._on_gain_preset)
         return box
