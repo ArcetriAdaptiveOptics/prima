@@ -64,6 +64,14 @@ class LivePyramid(BaseWavefrontSensor):
             np.save(path / 'slope_mask.npy', self._slope_mask.astype(np.uint8))
         if self._n_slopes is not None:
             np.save(path / 'n_slopes.npy', np.array([self._n_slopes]))
+        # Modulation tip/tilt center used at IFF (restore on flatten)
+        try:
+            if self._modulator is not None:
+                c = np.asarray(
+                    self._modulator.getCenterInMilliRad(), dtype=float).ravel()[:2]
+                np.save(path / 'mod_center_mrad.npy', c)
+        except Exception:
+            pass
         (path / 'wfs_mode.txt').write_text(self._mode + '\n')
 
     def load_geometry(self, path) -> bool:

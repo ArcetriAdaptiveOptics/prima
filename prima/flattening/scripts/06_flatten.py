@@ -104,8 +104,10 @@ def main(argv=None) -> int:
         svals = (np.load(cube / 'singular_values.npy')
                  if (cube / 'singular_values.npy').exists() else np.array([]))
         # Re-process if slope count mismatch after reopen
+        # Restore IFF mod center from cube (no re-autocenter — match IM WP)
         stack = open_live_stack(
-            prefer=args.prefer, park_dm=True, geometry_dir=cube)
+            prefer=args.prefer, park_dm=True, geometry_dir=cube,
+            autocenter=False, restore_mod_center=True)
         dm, wfs = stack.dm, stack.wfs
         mode = 'live-apply/%s' % wfs.mode
         # Warm up one acquire so frozen mask / n_slopes are active
