@@ -19,10 +19,16 @@ DEFAULT_MOD_CENTER_MRAD = (0.0, 0.0)
 # Integration time with Lock off — pick so pupils sit well below 4095 ADU
 # at the lab fiber / 4 mrad work point. Override with PRIMA_EXPOSURE_MS.
 DEFAULT_EXPOSURE_MS = float(os.environ.get('PRIMA_EXPOSURE_MS', '40.0'))
-DEFAULT_LOCK_EXP_TO_FREQ = False  # keep unlocked so Mono12 can stay unsaturated
+DEFAULT_LOCK_EXP_TO_FREQ = False  # GUI default: unlocked so Mono12 can stay unsaturated
 CAMERA_FULL_WIDTH = int(os.environ.get('PRIMA_CAMERA_WIDTH', '2048'))
 CAMERA_FULL_HEIGHT = int(os.environ.get('PRIMA_CAMERA_HEIGHT', '2048'))
 DEFAULT_PIXEL_FORMAT = 'Mono12'
+
+
+def exposure_ms_one_mod_period(freq_hz: float | None = None) -> float:
+    """Exposure for exactly one modulator period: ``t_exp = 1000 / f_mod`` ms."""
+    f = float(DEFAULT_MOD_FREQ_HZ if freq_hz is None else freq_hz)
+    return 1000.0 / max(f, 1e-6)
 
 # Display ROI = full frame (not a crop). Sensor ROI is also forced full-frame.
 DEFAULT_DISPLAY_ROI = (0, 0, CAMERA_FULL_WIDTH, CAMERA_FULL_HEIGHT)
