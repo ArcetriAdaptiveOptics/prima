@@ -20,6 +20,8 @@ def main(argv=None) -> int:
     p.add_argument('--amp', type=float, default=0.03)
     p.add_argument('--act', type=int, default=70)
     p.add_argument('--fake', action='store_true')
+    p.add_argument('--prefer', default='dao',
+                   help='BMC backend when --apply (dao|usb|auto)')
     args = p.parse_args(argv)
     dry = is_dry_run(args)
 
@@ -28,7 +30,7 @@ def main(argv=None) -> int:
         wfs = FakePyramid(dm, disturbance=np.zeros(dm.n_acts))
         mode = 'fake/dry'
     else:
-        dm = BmcMultiDm(prefer='usb', dry_run=False)
+        dm = BmcMultiDm(prefer=args.prefer, dry_run=False)
         wfs = None
         mode = 'apply'
 

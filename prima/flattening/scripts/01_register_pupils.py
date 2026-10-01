@@ -18,6 +18,9 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     add_apply_flag(p)
     p.add_argument('--fake', action='store_true')
+    p.add_argument(
+        '--touch-modulator', action='store_true',
+        help='Reconnect E-518 and reassert 4 mrad work defaults (skip if GUI holds GCS)')
     args = p.parse_args(argv)
     dry = is_dry_run(args)
 
@@ -31,28 +34,27 @@ def main(argv=None) -> int:
             frame[(yy - cy) ** 2 + (xx - cx) ** 2 <= r ** 2] = 2000
         mode = 'fake/dry'
     else:
-        from prima.hardware.pi_e518_modulator import PiE518Modulator
         from prima.gui.aravis_camera import AravisLiveCamera
         from prima.metrology.engine import MetrologyEngine
-        m = PiE518Modulator(connect=True)
-        m.setFrequencyInHz(float(DEFAULT_MOD_FREQ_HZ))
-        m.setRadiusInMilliRad(float(DEFAULT_MOD_RADIUS_MRAD))
-        time.sleep(0.8)
+        # Leave E-518 alone by default (GUI often holds GCS at 4 mrad work mode).
+        if args.touch_modulator:
+            from prima.hardware.pi_e518_modulator import PiE518Modulator
+            m = PiE518Modulator(connect=True)
+            m.setFrequencyInHz(float(DEFAULT_MOD_FREQ_HZ))
+            m.setRadiusInMilliRad(float(DEFAULT_MOD_RADIUS_MRAD))
+            time.sleep(0.8)
+            try:
+                m._gcs.close(); m._setup_done = False
+            except Exception:
+                pass
         cam = AravisLiveCamera(ip_address='192.168.30.189')
         cam.setExposureTime(float(DEFAULT_EXPOSURE_MS))
         time.sleep(0.4)
         frame = np.mean(
             [np.asarray(cam.getFrame(), dtype=float) for _ in range(4)], 0)
-        eng = MetrologyEngine(camera=cam, modulator=m)
-        m.setFrequencyInHz(float(DEFAULT_MOD_FREQ_HZ))
-        m.setRadiusInMilliRad(float(DEFAULT_MOD_RADIUS_MRAD))
+        eng = MetrologyEngine(camera=cam, modulator=None)
         centers, r = eng.find_pupils_from_frame(frame)
         mode = 'live'
-        # leave modulating — release without park
-        try:
-            m._gcs.close(); m._setup_done = False
-        except Exception:
-            pass
         cam.close()
 
     lo, hi = np.percentile(frame, [1, 99.5])
