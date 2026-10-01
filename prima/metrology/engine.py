@@ -328,8 +328,9 @@ class MetrologyEngine:
         Dark: prefer mean of pixels outside the four pupils (exclusion radius
         = 1.2×r). Falls back to corner/percentile provisional dark when
         geometry is unknown. Each quadrant gets its own adaptive threshold on
-        the dark-subtracted image. Centroids use a two-pass ROI refine and a
-        shared median radius so the four spots stay mutually consistent.
+        the dark-subtracted image. Centroids are refined independently (free
+        A–D positions — no rectangular snap). A shared median radius is kept
+        only for display / measure scale.
 
         Prefer ``find_pupils()`` from the GUI so modulation is bumped to
         10/20 mrad for acquisition, then restored.
@@ -402,15 +403,15 @@ class MetrologyEngine:
         r_common = float(rw[np.searchsorted(cum, 0.5 * cum[-1])])
         r_common = max(r_common, 8.0)
 
-        # Pass 2: refine centroids only (keep r_common)
+        # Pass 2: refine each centroid independently (no rectangular snap).
+        # Centers stay free; shared r_common is only a display/measure radius.
         refined = []
-        for cy, cx in centers:
-            cy2, cx2 = self._refine_pupil_center(work, cy, cx, r_common)
+        for i, (cy, cx) in enumerate(centers):
+            r_i = float(radii[i]) if radii[i] > 4 else r_common
+            cy2, cx2 = self._refine_pupil_center(work, cy, cx, r_i)
             refined.append([cy2, cx2])
         centers = np.asarray(refined, dtype=float)
-
-        # Soft rectangularization
-        centers = self._rectangularize_pupils(centers)
+        # Intentionally NO _rectangularize_pupils — free A–D positions.
 
         self.set_pyramid_geometry(centers)
         self._pupil_radius = r_common
@@ -611,8 +612,10 @@ class MetrologyEngine:
         local_dark = MetrologyEngine._quadrant_local_dark(q)
         # Work relative to local continuum
         q2 = np.clip(q - local_dark, 0.0, None)
-        # Target bright fraction for a ~circular pupil in a quadrant (~3–20%)
-        frac_lo, frac_hi = 0.02, 0.28
+        # Target bright fraction for a ~circular pupil in a quadrant.
+        # Prefer fuller disks (lower thr) so yellow circles match illumination
+        # at 4 mrad work mode — not just the bright core.
+        frac_lo, frac_hi = 0.04, 0.35
 
         try:
             from skimage.filters import threshold_otsu
@@ -623,15 +626,14 @@ class MetrologyEngine:
         except Exception:
             pass
 
-        # Sweep percentiles for a sensible bright fraction
-        for pct in (85, 88, 90, 92, 80, 75):
+        # Sweep percentiles for a sensible bright fraction (lower = fuller disk)
+        for pct in (75, 78, 80, 82, 85, 70, 88):
             thr_p = float(np.percentile(q, pct))
             frac_p = float(np.mean(q >= thr_p))
             if frac_lo <= frac_p <= frac_hi:
                 return thr_p
 
         # Background + k·σ of border (captures full disk, not just core)
-        border = q2
         bh, bw = q2.shape
         bb = max(4, min(bh, bw) // 16)
         rim = np.concatenate([
@@ -639,10 +641,10 @@ class MetrologyEngine:
             q2[:, :bb].ravel(), q2[:, -bb:].ravel(),
         ])
         sig = float(np.std(rim)) + 1e-6
-        thr_bg = local_dark + 4.0 * sig
+        thr_bg = local_dark + 3.0 * sig
         # Ensure we don't take almost everything
         if float(np.mean(q >= thr_bg)) > frac_hi:
-            thr_bg = float(np.percentile(q, 90))
+            thr_bg = float(np.percentile(q, 82))
         return float(thr_bg)
 
     @classmethod
@@ -731,13 +733,14 @@ class MetrologyEngine:
         disk = (yy - cy_l) ** 2 + (xx - cx_l) ** 2 <= (1.05 * r) ** 2
         if not np.any(disk):
             return float(cy), float(cx)
-        # Soft threshold inside disk: above mid of (p30, p70) of disk pixels
+        # Soft threshold inside disk: bias low so mask tracks the illuminated
+        # disk, not only the bright core (important at 4 mrad work mode).
         vals = roi[disk]
-        lo, hi = np.percentile(vals, [30, 70])
+        lo, hi = np.percentile(vals, [15, 55])
         thr = 0.5 * (lo + hi)
         mask = disk & (roi >= thr)
         if mask.sum() < 32:
-            mask = disk & (roi >= np.percentile(vals, 40))
+            mask = disk & (roi >= np.percentile(vals, 25))
         if not np.any(mask):
             mask = disk
         # Unweighted centroid of mask
@@ -749,36 +752,6 @@ class MetrologyEngine:
         """Backward-compatible wrapper returning (cy, cx, r)."""
         cy2, cx2 = cls._refine_pupil_center(frame, cy, cx, r_guess)
         return cy2, cx2, float(r_guess)
-
-    @staticmethod
-    def _rectangularize_pupils(centers: np.ndarray) -> np.ndarray:
-        """Snap A/B/C/D to a rectangle while preserving the figure's center.
-
-        A=BL, B=BR, C=TL, D=TR. Soft average of opposite sides.
-        """
-        c = np.asarray(centers, dtype=float).reshape(4, 2).copy()
-        # rows: A,B bottom; C,D top
-        y_bot = 0.5 * (c[0, 0] + c[1, 0])
-        y_top = 0.5 * (c[2, 0] + c[3, 0])
-        # cols: A,C left; B,D right
-        x_left = 0.5 * (c[0, 1] + c[2, 1])
-        x_right = 0.5 * (c[1, 1] + c[3, 1])
-        # Only snap if the correction is modest (< 12% of separation) —
-        # avoid inventing geometry when a pupil is truly missing.
-        sep_y = abs(y_bot - y_top) + 1e-6
-        sep_x = abs(x_right - x_left) + 1e-6
-        max_shift = 0.12 * min(sep_x, sep_y)
-        target = np.array([
-            [y_bot, x_left],   # A
-            [y_bot, x_right],  # B
-            [y_top, x_left],   # C
-            [y_top, x_right],  # D
-        ], dtype=float)
-        shift = np.linalg.norm(target - c, axis=1)
-        if float(np.max(shift)) <= max_shift * 2.5:
-            # Strong snap to rectangle — raw find only seeds the side lengths
-            c = 0.9 * target + 0.1 * c
-        return c
 
     def _set_theoretical_tilt_response(self):
         self._mgr.setPyramidTiltResponse(
