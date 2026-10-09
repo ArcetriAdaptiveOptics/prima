@@ -26,3 +26,6 @@ gui-logs/
 work/runner/
 work/data/*.npy
 work/data/*.npz
+
+# Obsidian vault settings
+work/.obsidian/

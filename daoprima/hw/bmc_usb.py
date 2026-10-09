@@ -106,10 +106,10 @@ def load_map(name: str = 'MULTI140.map') -> np.ndarray:
 def floats_to_dac(cmd: np.ndarray) -> np.ndarray:
     """Map float [0,1] (or small bipolar around 0 → clip) to uint16 DAC words."""
     x = np.asarray(cmd, dtype=np.float64).ravel()
-    # Allow mild bipolar: map [-1,1] → [0,1] only if any negative and max<=1
-    if np.any(x < 0) and np.max(np.abs(x)) <= 1.0 + 1e-6:
-        x = 0.5 + 0.5 * np.clip(x, -1.0, 1.0)
-    x = np.clip(x, 0.0, 1.0)
+    # Plain clip to [0, 1].  (The former implicit 'bipolar' remapping of
+    # commands containing a negative value made a tiny negative number
+    # jump the whole mirror to mid-scale: removed for safety.)
+    x = np.clip(np.nan_to_num(x, nan=0.0), 0.0, 1.0)
     # 16-bit word; hardware drops 2 LSBs → 14-bit
     return (x * 65535.0 + 0.5).astype(np.uint16)
 
@@ -189,12 +189,40 @@ class MultiDmUsb:
                                    (self.n_actuators,))
             self.send_data(np.clip(init, 0.0, 1.0))
 
-    def _ctrl_set(self, code: int) -> None:
-        """VR_SetControl (0xF5): CIUsb control id in wIndex (lab-proven)."""
+    # ------------------------------------------------------------------
+    # VR_SetControlBits (0xF5): wIndex is a BIT MASK, not a CIUsb code:
+    #   bit7 = 1 set / 0 clear, bit1 = FRESET, bit2 = FRAME_SYNC,
+    #   bit3 = HV_ENAB, bit4 = LV_SHDN, bit5 = EXT_I2C
+    # (CIUsbShared.h, J. Codona BMCUSB Linux driver, U. Arizona 2011).
+    # The previous implementation sent the CIUsbLib *codes* (0..10) as
+    # wIndex, so HV_ENAB was never set and the driver never consumed
+    # frames (FIFO full after 4 frames -> USB timeout).  Fixed 2026-10-09.
+    BIT_FRESET = 0x02
+    BIT_FRAME_SYNC = 0x04
+    BIT_HV_ENAB = 0x08
+    BIT_LV_SHDN = 0x10
+
+    def _ctrl_bits(self, bit: int, value: bool) -> None:
         assert self._dev is not None
         self._dev.ctrl_transfer(
-            0x40, C.VR_SET_CONTROL, 0, code & 0xFFFF, None,
-            timeout=self.timeout_ms)
+            0x40, C.VR_SET_CONTROL, 0, (0x80 if value else 0x00) | bit,
+            None, timeout=self.timeout_ms)
+
+    def _ctrl_set(self, code: int) -> None:
+        """Legacy CIUsb control codes -> correct bit-mask request."""
+        table = {C.CTRL_ASSERT_FRAME_SYNC: (self.BIT_FRAME_SYNC, True),
+                 C.CTRL_DEASSERT_FRAME_SYNC: (self.BIT_FRAME_SYNC, False),
+                 C.CTRL_ASSERT_FRESET: (self.BIT_FRESET, True),
+                 C.CTRL_DEASSERT_FRESET: (self.BIT_FRESET, False),
+                 C.CTRL_ASSERT_HV_ENAB: (self.BIT_HV_ENAB, True),
+                 C.CTRL_DEASSERT_HV_ENAB: (self.BIT_HV_ENAB, False)}
+        bit, val = table[code]
+        self._ctrl_bits(bit, val)
+
+    def status_bits(self) -> int:
+        """bit0 FRAME_ERROR, bit1 RdHvaE (HV active), bit2 CABLE_OK."""
+        st = self._ctrl_get_status()
+        return int(st[0]) | (int(st[1]) << 8 if len(st) > 1 else 0)
 
     def _ctrl_get_status(self) -> bytes:
         assert self._dev is not None
@@ -202,23 +230,19 @@ class MultiDmUsb:
             0xC0, C.VR_GET_STATUS, 0, 0, 2, timeout=self.timeout_ms))
 
     def _reset_and_hv(self) -> None:
-        # VR_ResetAll arms FX2 endpoints; then FRESET pulse + HV enable
-        # (UsbExMulti.cpp / BMC SW Design §5.6). Do NOT toggle FRAME_SYNC.
+        # Codona sequence: FRESET clear -> set, then HV_ENAB set.
         try:
             self._dev.ctrl_transfer(
                 0x40, C.VR_RESET_ALL, 0, 0, None, timeout=self.timeout_ms)
         except Exception as exc:
             self._hv_warning = 'ResetAll: %s' % exc
         time.sleep(0.02)
-        try:
-            self._ctrl_set(C.CTRL_DEASSERT_FRESET)
-            time.sleep(0.01)
-            self._ctrl_set(C.CTRL_ASSERT_FRESET)
-            time.sleep(0.01)
-            self._ctrl_set(C.CTRL_ASSERT_HV_ENAB)
-            time.sleep(0.02)
-        except Exception as exc:
-            self._hv_warning = str(exc)
+        self._ctrl_bits(self.BIT_FRESET, False)
+        time.sleep(0.01)
+        self._ctrl_bits(self.BIT_FRESET, True)
+        time.sleep(0.01)
+        self._ctrl_bits(self.BIT_HV_ENAB, True)
+        time.sleep(0.05)
 
     def send_data(self, cmd: Sequence[float]) -> None:
         if self._dev is None or self._ep_out is None:
@@ -251,7 +275,7 @@ class MultiDmUsb:
     def close(self) -> None:
         if self._dev is not None:
             try:
-                self._ctrl_set(C.CTRL_DEASSERT_HV_ENAB)
+                self._ctrl_bits(self.BIT_HV_ENAB, False)
             except Exception:
                 pass
             import usb.util

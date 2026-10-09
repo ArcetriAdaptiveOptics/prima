@@ -280,8 +280,9 @@ class AOEngine:
             scal['slope_rms'] = float(np.sqrt(np.mean(s ** 2)))
             scal['flux'] = res['flux']
         if modes is not None:
-            scal['mode_rms'] = float(np.sqrt(np.sum(modes ** 2)
-                                             / max(1, self.active.sum())))
+            # modes are orthonormal with unit RMS on the active actuators
+            # -> WF rms on the DM = sqrt(sum m_k^2)
+            scal['mode_rms'] = float(np.sqrt(np.sum(modes ** 2)))
             if self._proj is not None:
                 with self._lock:
                     d = self.ch['turb'] + self.ch['static']

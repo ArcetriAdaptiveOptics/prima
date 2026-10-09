@@ -7,7 +7,7 @@ Software nuovo in `prima/aolab` (motore AO + GUI stile daoEkarus).
 - [[01-ricognizione-2026-10-09]] — stato di partenza di hardware, rete, repo e prime misure
 - [[02-aolab-software]] — architettura del software, come si usa, test sul simulatore
 - [[03-regole-banco]] — regole di sicurezza: presa Meross, DM, modulatore
-- [[04-test-hw-2026-10-09]] — primi test su hardware (in corso)
+- [[04-test-hw-2026-10-09]] — test su hardware: bug del pivot E-518, bug HV del DM, **primo loop chiuso**
 
 ## Come lanciare
 ```bash
