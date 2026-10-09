@@ -22,3 +22,7 @@ gui-logs/
 .cursor/
 *.orig
 *.bak
+# PRIMA AO lab: runner queue/logs and bulky data stay local
+work/runner/
+work/data/*.npy
+work/data/*.npz

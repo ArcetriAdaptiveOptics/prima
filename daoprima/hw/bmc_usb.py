@@ -137,7 +137,9 @@ class MultiDmUsb:
         self.serial = 'USB-MultiDM'
         self.n_actuators = C.N_ACTUATORS_USER
 
-    def open(self) -> None:
+    def open(self, initial=0.5) -> None:
+        """Claim the device, enable HV and send ``initial`` (scalar or
+        140-vector; ``None`` = send nothing)."""
         import usb.core
         import usb.util
 
@@ -182,7 +184,10 @@ class MultiDmUsb:
         except Exception:
             pass
         self._reset_and_hv()
-        self.send_data(np.full(self.n_actuators, 0.5))  # safe mid flat
+        if initial is not None:
+            init = np.broadcast_to(np.asarray(initial, dtype=float),
+                                   (self.n_actuators,))
+            self.send_data(np.clip(init, 0.0, 1.0))
 
     def _ctrl_set(self, code: int) -> None:
         """VR_SetControl (0xF5): CIUsb control id in wIndex (lab-proven)."""
