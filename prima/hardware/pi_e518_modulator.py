@@ -175,6 +175,11 @@ class PiE518Modulator:
         hi = self._cal['v_hi']
         g.set('VMI 1 %.6f 2 %.6f 3 %.6f' % (lo[0], lo[1], lo[2]))
         g.set('VMA 1 %.6f 2 %.6f 3 %.6f' % (hi[0], hi[1], hi[2]))
+        # 3rd axis = pivot, open loop at 100 (as pi_gcs.TipTilt2Axis).
+        # Without this the S-334 works far from mid travel (bug fixed
+        # 2026-10-09, see work/04-test-hw-2026-10-09.md).
+        g.set('SVO C 0')
+        g.set('SVA C 100')
         g.set('SVO A 1 B 1 C 0')
         g.set('WTR 1 1 0 2 1 0 3 1 0')
         # Clear residual error code so later set() is clean.
@@ -190,41 +195,23 @@ class PiE518Modulator:
         return float(vals.get(1, float('nan'))), float(vals.get(2, float('nan')))
 
     def park_midscale(self, target_v=None, tol_v=0.8, max_iter=10) -> None:
-        """Stop wavegen and hold both tip-tilt axes at mid-travel (~50 V).
-
-        Binding: idle / R=0 must sit at +50 VDC so modulation swings around mid
-        scale and PWFS pupil centering is preserved. Uses ``SVA`` with servo
-        off (``SVO`` on blocks SVA with GCS 303 on this E-518).
-        """
+        """Stop wavegen and hold both axes in CLOSED LOOP at mid travel
+        (0 mrad = 50 GCS units, TMN 0 / TMX 100).  Outputs stay on (DC).
+        ``target_v``/``tol_v``/``max_iter`` kept for API compatibility."""
         if not self._gcs.connected:
             return
-        target = float(self._park_v if target_v is None else target_v)
         g = self._gcs
         g.set('WGO 1 0 2 0 3 0', check_err=False)
         g.set('WSL 1 0 2 0 3 0', check_err=False)
-        g.set('SVO A 0 B 0 C 0', check_err=False)
-        time.sleep(0.15)
-        # Seed near mid: on this E-518, SVA≈55 → VOL≈50 (≈0.9 V/V).
-        cmd_a = 55.0
-        cmd_b = 55.0
-        g.set('SVA A %.4f B %.4f' % (cmd_a, cmd_b), check_err=False)
-        time.sleep(0.45)
-        for _ in range(int(max_iter)):
-            a, b = self._read_vol_ab()
-            if not (math.isfinite(a) and math.isfinite(b)):
-                time.sleep(0.2)
-                continue
-            if abs(a - target) <= tol_v and abs(b - target) <= tol_v:
-                break
-            # Limited step — avoid winding SVA to the rail on a bad sample.
-            step_a = max(-3.0, min(3.0, -0.9 * (a - target)))
-            step_b = max(-3.0, min(3.0, -0.9 * (b - target)))
-            cmd_a = min(70.0, max(40.0, cmd_a + step_a))
-            cmd_b = min(70.0, max(40.0, cmd_b + step_b))
-            g.set('SVA A %.4f B %.4f' % (cmd_a, cmd_b), check_err=False)
-            time.sleep(0.3)
-        self._park_sva = [cmd_a, cmd_b]
-        # Leave SVO off so VOL holds the parked mid-scale voltage.
+        g.set('SVO A 1 B 1', check_err=False)
+        g.set('MOV A %.5f B %.5f' % (
+            self._mrad_to_gcs(float(self._center[0]), 'A'),
+            self._mrad_to_gcs(float(self._center[1]), 'B')), check_err=False)
+        time.sleep(0.1)
+        try:
+            self._read_vol_ab()
+        except Exception:
+            pass
         self._modulating = False
         self._parked = True
         self._wave_n_pts = 0

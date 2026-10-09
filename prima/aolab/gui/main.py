@@ -94,7 +94,7 @@ class AOLabWindow(QtWidgets.QMainWindow):
         self.bridge.log.connect(self._append_log)
         self.bridge.calib_done.connect(self._on_calib_done)
         self.e.log = lambda m: self.bridge.log.emit(m)
-        self.setWindowTitle('PRIMA AO Lab  [%s]' % mode.upper())
+        self.setWindowTitle('PRIMA AO Lab  [%s]   DM: %s' % (mode.upper(), engine.dm.name))
         self.setStyleSheet(STYLE)
         self._pupil_items = []
         self._dm_channel = 'total'
@@ -763,7 +763,8 @@ def build_engine(mode: str, args) -> AOEngine:
     from prima.aolab.devices.hw import make_hw_bench
     cam, dm, mod, flat = make_hw_bench(exposure_ms=args.exposure,
                                        binning=args.binning,
-                                       radius_mrad=args.radius)
+                                       radius_mrad=args.radius,
+                                       use_dm=not args.no_dm)
     return AOEngine(cam, dm, mod, flat)
 
 
@@ -776,6 +777,8 @@ def main(argv=None):
     ap.add_argument('--exposure', type=float, default=50.0)
     ap.add_argument('--binning', type=int, default=2)
     ap.add_argument('--radius', type=float, default=10.0)
+    ap.add_argument('--no-dm', action='store_true',
+                    help='real camera + modulator, DM not driven')
     ap.add_argument('--screenshot', default=None,
                     help='(testing) save a screenshot after N s and quit')
     ap.add_argument('--script', default=None,

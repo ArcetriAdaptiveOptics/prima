@@ -79,44 +79,57 @@ class BmcUsbDM(DeformableMirror):
         self._hw.close()
 
 
+class NullDM(DeformableMirror):
+    """Stand-in when the DM is not available: commands are only stored."""
+
+    def __init__(self, initial):
+        self.name = 'NO DM (commands discarded)'
+        self._last = np.asarray(initial, float).copy()
+
+    def send(self, cmd):
+        self._last = np.clip(np.asarray(cmd, float).ravel(), 0, 1)
+
+    def last(self):
+        return self._last.copy()
+
+
 class PiModulator(Modulator):
-    """Wrapper of the proven direct-GCS E-518 driver."""
+    """S-334 on E-518 with the correct pi_gcs-style setup (pivot 100 V,
+    closed loop, circle centred on mid travel, R=0 -> DC at mid travel).
+    See ``pi_modulator.py``."""
 
     def __init__(self, radius_mrad: float = 10.0, freq_hz: float = 20.0,
                  host: str | None = None):
-        from prima.hardware.pi_e518_modulator import PiE518Modulator
+        from prima.aolab.devices.pi_modulator import PiTipTiltModulator
         kw = {'host': host} if host else {}
-        self._m = PiE518Modulator(**kw)
+        self._m = PiTipTiltModulator(**kw)
         self.name = 'PI S-334 / E-518'
         self.set_modulation(radius_mrad, freq_hz)
 
     def set_modulation(self, radius_mrad, freq_hz):
-        self._m.setFrequencyInHz(float(freq_hz))
-        self._m.setRadiusInMilliRad(float(radius_mrad))
+        self._m.set_modulation(float(radius_mrad), float(freq_hz))
 
     def set_center(self, cx, cy):
-        self._m.setCenterInMilliRad(np.array([float(cx), float(cy)]))
+        self._m.set_center(cx, cy)
 
     def state(self):
-        c = self._m.getCenterInMilliRad()
-        return {'radius_mrad': self._m.getRadiusInMilliRad(),
-                'freq_hz': self._m.getFrequencyInHz(),
-                'center': (float(c[0]), float(c[1]))}
+        return self._m.state()
+
+    def readback(self):
+        return self._m.readback()
 
     def close(self, keep_modulating: bool = True):
-        if keep_modulating:
-            self._m._gcs.close()
-        else:
-            self._m.close()
+        self._m.close(keep_state=keep_modulating)
 
 
 def make_hw_bench(exposure_ms: float = 50.0, binning: int = 2,
-                  radius_mrad: float = 10.0, freq_hz: float = 20.0):
+                  radius_mrad: float = 10.0, freq_hz: float = 20.0,
+                  use_dm: bool = True):
     from prima.aolab.devices.camera_aravis import AravisCamera
     flat = load_flat()
     cam = AravisCamera(exposure_ms=exposure_ms)
     if binning > 1:
         cam.set_binning(binning)
-    dm = BmcUsbDM(flat)
+    dm = BmcUsbDM(flat) if use_dm else NullDM(flat)
     mod = PiModulator(radius_mrad, freq_hz)
     return cam, dm, mod, flat

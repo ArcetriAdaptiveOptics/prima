@@ -1,0 +1,24 @@
+# PRIMA — diario di lavoro (Claude)
+
+Banco AO didattico: PWFS modulato (Manta G-419 + PI S-334/E-518) e BMC Multi-DM 140.
+Software nuovo in `prima/aolab` (motore AO + GUI stile daoEkarus).
+
+## Note
+- [[01-ricognizione-2026-10-09]] — stato di partenza di hardware, rete, repo e prime misure
+- [[02-aolab-software]] — architettura del software, come si usa, test sul simulatore
+- [[03-regole-banco]] — regole di sicurezza: presa Meross, DM, modulatore
+- [[04-test-hw-2026-10-09]] — primi test su hardware (in corso)
+
+## Come lanciare
+```bash
+source ~/git/.venv-prima/bin/activate
+cd ~/git/prima
+python -m prima.aolab.gui --sim     # gemello numerico, senza hardware
+python -m prima.aolab.gui --hw      # banco vero
+```
+
+## Convenzioni
+- Le ampiezze in **nm** sono *nominali*: stroke di 5.5 µm, deflessione proporzionale a u²,
+  WF = 2 × superficie. Il DM non è ancora calibrato all'interferometro.
+- Dati di calibrazione: `~/git/prima_data/<data>_<tag>/` (`calib.npz` + `meta.json`).
+- Dati grezzi dei test: `work/data/` (gli npz/npy non vanno in git).

@@ -73,6 +73,37 @@ class AravisCamera(Camera):
         except Exception:
             cam.set_string('PixelFormat', 'Mono8')
         cam.set_acquisition_mode(A.AcquisitionMode.CONTINUOUS)
+        # Manta G-419 has NO binning (BinningHorizontal max=1): we use
+        # decimation (sub-sampling) instead.  Start from a clean full frame.
+        self._dec_feature = None
+        try:
+            lo, hi = cam.get_device().get_integer_feature_bounds(
+                'BinningHorizontal')
+            if hi <= 1:
+                self._dec_feature = 'Decimation'
+        except Exception:
+            self._dec_feature = 'Decimation'
+        self._set_reduction(1)
+        self._full_region()
+
+    def _full_region(self):
+        d = self._cam.get_device()
+        self._cam.set_region(0, 0, 64, 64)
+        w = d.get_integer_feature_bounds('Width')[1]
+        h = d.get_integer_feature_bounds('Height')[1]
+        self._cam.set_region(0, 0, int(w), int(h))
+
+    def _set_reduction(self, b):
+        d = self._cam.get_device()
+        if self._dec_feature:
+            for ax in ('Horizontal', 'Vertical'):
+                try:
+                    d.set_integer_feature_value('Decimation' + ax, int(b))
+                except Exception:
+                    if int(b) != 1:
+                        raise
+        else:
+            self._cam.set_binning(int(b), int(b))
 
     def _start_stream(self):
         A = self._A
@@ -193,15 +224,16 @@ class AravisCamera(Camera):
     def set_binning(self, b):
         def f():
             self._cam.set_region(0, 0, 64, 64)
-            self._cam.set_binning(int(b), int(b))
-            # full sensor in binned pixels
-            wmax = int(self._cam.get_integer('WidthMax'))
-            hmax = int(self._cam.get_integer('HeightMax'))
-            self._cam.set_region(0, 0, wmax, hmax)
+            self._set_reduction(b)
+            self._full_region()
+            self._bin = int(b)
         self._restart_after(f)
 
     def get_binning(self):
         try:
+            if self._dec_feature:
+                return int(self._cam.get_device().get_integer_feature_value(
+                    'DecimationHorizontal'))
             return int(self._cam.get_binning()[0])
         except Exception:
             return 1

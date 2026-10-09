@@ -80,7 +80,11 @@ def find_pupils(frame: np.ndarray, threshold: float | None = None,  # fraction
             continue
         break
     else:
-        raise RuntimeError(last + ': check light, exposure, modulation')
+        try:
+            cents, radii, fr = _find_per_quadrant(img)
+        except RuntimeError as exc:
+            raise RuntimeError(last + '; per-quadrant: %s: check light, '
+                               'exposure, modulation' % exc)
     # order: bottom-left, bottom-right, top-left, top-right
     order = np.lexsort((cents[:, 1], cents[:, 0]))
     cents = cents[order]
@@ -90,6 +94,33 @@ def find_pupils(frame: np.ndarray, threshold: float | None = None,  # fraction
     cents = np.vstack([low, high])
     return PupilGeometry(cents, float(np.median(radii)), tuple(img.shape),
                          'thr=%.2f*p99.5 radii=%s' % (fr, np.round(radii, 1)))
+
+
+def _find_per_quadrant(img: np.ndarray):
+    """Fallback for strongly unbalanced pupils: one blob per detector
+    quadrant, each thresholded at half of its own maximum."""
+    h, w = img.shape
+    cents, radii = [], []
+    for (y0, x0) in ((0, 0), (0, w // 2), (h // 2, 0), (h // 2, w // 2)):
+        q = img[y0:y0 + h // 2, x0:x0 + w // 2]
+        bg = np.percentile(q, 20)
+        top = np.percentile(q, 99.9)
+        if top - bg <= 0:
+            raise RuntimeError('empty quadrant')
+        m = ndimage.binary_fill_holes(
+            ndimage.binary_opening(q > bg + 0.3 * (top - bg), iterations=2))
+        lab, n = ndimage.label(m)
+        if n == 0:
+            raise RuntimeError('no blob in quadrant')
+        areas = ndimage.sum(m, lab, index=np.arange(1, n + 1))
+        k = int(np.argmax(areas)) + 1
+        cy, cx = ndimage.center_of_mass(lab == k)
+        cents.append((cy + y0, cx + x0))
+        radii.append(np.sqrt(areas[k - 1] / np.pi))
+    radii = np.asarray(radii)
+    if radii.min() < 0.8 * radii.max():
+        raise RuntimeError('sizes %s' % np.round(radii, 1))
+    return np.asarray(cents), radii, -1
 
 
 class PyramidProcessor:
