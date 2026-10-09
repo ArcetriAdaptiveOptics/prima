@@ -8,7 +8,7 @@ import numpy as np
 
 class Telemetry:
     SCALARS = ('t', 'frame', 'slope_rms', 'mode_rms', 'loop_cmd_rms',
-               'dist_rms', 'flux', 'sat_frac', 'loop_closed')
+               'dist_rms', 'flux', 'sat_frac', 'loop_closed', 'dark', 'dm_res_rms')
 
     def __init__(self, length: int = 3000, n_modes: int = 0):
         self.length = int(length)

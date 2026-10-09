@@ -1,0 +1,362 @@
+[
+ {
+  "dec": 1,
+  "roi": "full",
+  "exp_ms": 50,
+  "fps": 12.9,
+  "max_fps": 12.9,
+  "errors": 0,
+  "shape": [
+   2048,
+   2048
+  ],
+  "region": [
+   0,
+   0,
+   2048,
+   2048
+  ]
+ },
+ {
+  "dec": 1,
+  "roi": "full",
+  "exp_ms": 20,
+  "fps": 12.5,
+  "max_fps": 12.9,
+  "errors": 0,
+  "shape": [
+   2048,
+   2048
+  ],
+  "region": [
+   0,
+   0,
+   2048,
+   2048
+  ]
+ },
+ {
+  "dec": 1,
+  "roi": "full",
+  "exp_ms": 10,
+  "fps": 12.6,
+  "max_fps": 12.9,
+  "errors": 0,
+  "shape": [
+   2048,
+   2048
+  ],
+  "region": [
+   0,
+   0,
+   2048,
+   2048
+  ]
+ },
+ {
+  "dec": 1,
+  "roi": "full",
+  "exp_ms": 5,
+  "fps": 12.6,
+  "max_fps": 12.9,
+  "errors": 0,
+  "shape": [
+   2048,
+   2048
+  ],
+  "region": [
+   0,
+   0,
+   2048,
+   2048
+  ]
+ },
+ {
+  "dec": 1,
+  "roi": "full",
+  "exp_ms": 2,
+  "fps": 12.6,
+  "max_fps": 12.9,
+  "errors": 0,
+  "shape": [
+   2048,
+   2048
+  ],
+  "region": [
+   0,
+   0,
+   2048,
+   2048
+  ]
+ },
+ {
+  "dec": 1,
+  "roi": "pupils",
+  "exp_ms": 50,
+  "fps": 12.2,
+  "max_fps": 20.0,
+  "errors": 0,
+  "shape": [
+   1648,
+   1624
+  ],
+  "region": [
+   220,
+   290,
+   1624,
+   1648
+  ]
+ },
+ {
+  "dec": 1,
+  "roi": "pupils",
+  "exp_ms": 20,
+  "fps": 12.8,
+  "max_fps": 20.2,
+  "errors": 0,
+  "shape": [
+   1648,
+   1624
+  ],
+  "region": [
+   220,
+   290,
+   1624,
+   1648
+  ]
+ },
+ {
+  "dec": 1,
+  "roi": "pupils",
+  "exp_ms": 10,
+  "fps": 12.8,
+  "max_fps": 20.2,
+  "errors": 0,
+  "shape": [
+   1648,
+   1624
+  ],
+  "region": [
+   220,
+   290,
+   1624,
+   1648
+  ]
+ },
+ {
+  "dec": 1,
+  "roi": "pupils",
+  "exp_ms": 5,
+  "fps": 12.9,
+  "max_fps": 20.2,
+  "errors": 0,
+  "shape": [
+   1648,
+   1624
+  ],
+  "region": [
+   220,
+   290,
+   1624,
+   1648
+  ]
+ },
+ {
+  "dec": 1,
+  "roi": "pupils",
+  "exp_ms": 2,
+  "fps": 12.9,
+  "max_fps": 20.2,
+  "errors": 0,
+  "shape": [
+   1648,
+   1624
+  ],
+  "region": [
+   220,
+   290,
+   1624,
+   1648
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "full",
+  "exp_ms": 50,
+  "fps": 10.6,
+  "max_fps": 20.0,
+  "errors": 0,
+  "shape": [
+   1024,
+   1024
+  ],
+  "region": [
+   0,
+   0,
+   1024,
+   1024
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "full",
+  "exp_ms": 20,
+  "fps": 12.9,
+  "max_fps": 32.9,
+  "errors": 0,
+  "shape": [
+   1024,
+   1024
+  ],
+  "region": [
+   0,
+   0,
+   1024,
+   1024
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "full",
+  "exp_ms": 10,
+  "fps": 12.9,
+  "max_fps": 32.9,
+  "errors": 0,
+  "shape": [
+   1024,
+   1024
+  ],
+  "region": [
+   0,
+   0,
+   1024,
+   1024
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "full",
+  "exp_ms": 5,
+  "fps": 12.9,
+  "max_fps": 32.9,
+  "errors": 0,
+  "shape": [
+   1024,
+   1024
+  ],
+  "region": [
+   0,
+   0,
+   1024,
+   1024
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "full",
+  "exp_ms": 2,
+  "fps": 12.9,
+  "max_fps": 32.9,
+  "errors": 0,
+  "shape": [
+   1024,
+   1024
+  ],
+  "region": [
+   0,
+   0,
+   1024,
+   1024
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "pupils",
+  "exp_ms": 50,
+  "fps": 12.3,
+  "max_fps": 20.0,
+  "errors": 0,
+  "shape": [
+   824,
+   808
+  ],
+  "region": [
+   110,
+   144,
+   808,
+   824
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "pupils",
+  "exp_ms": 20,
+  "fps": 12.9,
+  "max_fps": 40.8,
+  "errors": 0,
+  "shape": [
+   824,
+   808
+  ],
+  "region": [
+   110,
+   144,
+   808,
+   824
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "pupils",
+  "exp_ms": 10,
+  "fps": 12.9,
+  "max_fps": 40.8,
+  "errors": 0,
+  "shape": [
+   824,
+   808
+  ],
+  "region": [
+   110,
+   144,
+   808,
+   824
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "pupils",
+  "exp_ms": 5,
+  "fps": 12.9,
+  "max_fps": 40.8,
+  "errors": 0,
+  "shape": [
+   824,
+   808
+  ],
+  "region": [
+   110,
+   144,
+   808,
+   824
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "pupils",
+  "exp_ms": 2,
+  "fps": 13.0,
+  "max_fps": 40.8,
+  "errors": 0,
+  "shape": [
+   824,
+   808
+  ],
+  "region": [
+   110,
+   144,
+   808,
+   824
+  ]
+ }
+]

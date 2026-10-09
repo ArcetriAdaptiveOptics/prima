@@ -173,6 +173,42 @@ class AOLabWindow(QtWidgets.QMainWindow):
             g.addWidget(w, i, 1)
             if b is not None:
                 g.addWidget(b, i, 2)
+        n = len(rows)
+        b_roi = QtWidgets.QPushButton('ROI on pupils')
+        b_roi.setToolTip('crop the sensor tangent to the outer pupils '
+                         '(+ margin): fewer pixels -> faster frames')
+        self.sp_roim = ispin(5, 0, 200)
+        self.sp_roim.setSuffix(' px')
+        b_roi.clicked.connect(lambda: (self._safe(
+            self.e.roi_to_pupils, self.sp_roim.value()), self._draw_pupils()))
+        b_full = QtWidgets.QPushButton('Full frame')
+        b_full.clicked.connect(lambda: (self._safe(self.e.roi_full),
+                                        self._draw_pupils()))
+        g.addWidget(QtWidgets.QLabel('ROI margin'), n, 0)
+        g.addWidget(self.sp_roim, n, 1)
+        hb = QtWidgets.QHBoxLayout()
+        hb.addWidget(b_roi)
+        hb.addWidget(b_full)
+        g.addLayout(hb, n, 2)
+        self.cb_dark = QtWidgets.QComboBox()
+        self.cb_dark.addItems(['follower', 'frame', 'off'])
+        self.cb_dark.setToolTip('dark = mean of the pixels outside the '
+                                'pupils; follower = running mean')
+        self.sp_darkn = ispin(20, 1, 1000)
+        self.sp_darkn.setSuffix(' frames')
+        def _dark():
+            if self.e.proc is not None:
+                self.e.proc.dark_mode = self.cb_dark.currentText()
+                self.e.proc.dark_frames = self.sp_darkn.value()
+        self.cb_dark.currentIndexChanged.connect(lambda *_: _dark())
+        self.sp_darkn.valueChanged.connect(lambda *_: _dark())
+        self.chk_darkmask = QtWidgets.QCheckBox('show dark area')
+        g.addWidget(QtWidgets.QLabel('Dark'), n + 1, 0)
+        g.addWidget(self.cb_dark, n + 1, 1)
+        hd = QtWidgets.QHBoxLayout()
+        hd.addWidget(self.sp_darkn)
+        hd.addWidget(self.chk_darkmask)
+        g.addLayout(hd, n + 1, 2)
         return box
 
     # ---------------------------------------------------------- slopes
@@ -626,15 +662,27 @@ class AOLabWindow(QtWidgets.QMainWindow):
         img = f[::ds, ::ds]
         if self.chk_log.isChecked():
             img = np.sqrt(np.clip(img, 0, None))
+        if self.chk_darkmask.isChecked() and self.e.proc is not None:
+            try:
+                if getattr(self, '_dm_shape', None) != f.shape:
+                    self._dmask = self.e.proc.background_mask(f.shape)
+                    self._dmask = self._dmask[::ds, ::ds]
+                    self._dm_shape = f.shape
+                img = np.where(self._dmask, img.max(), img)
+            except Exception:
+                pass
         self.cam_img.setImage(img, autoLevels=True)
         for it in self._pupil_items:
             it.setVisible(self.chk_pupils.isChecked())
         fw = self.e.cam.full_well()
         mx = float(f.max())
         warn = '  SATURATED!' if mx >= fw * 0.98 else ''
-        self.lbl_cam.setText('%dx%d  max %.0f / %.0f ADU%s   cam %.1f fps'
+        p = self.e.proc
+        dk = ('  dark %.1f (frame %.1f)' % (p.dark, p.dark_inst)
+              if p is not None and p.dark is not None and p.dark_inst is not None else '')
+        self.lbl_cam.setText('%dx%d  max %.0f / %.0f ADU%s   cam %.1f fps%s'
                              % (f.shape[1], f.shape[0], mx, fw, warn,
-                                self.e.cam.get_fps()))
+                                self.e.cam.get_fps(), dk))
 
     def _refresh_slopes(self):
         e = self.e
@@ -764,7 +812,10 @@ def build_engine(mode: str, args) -> AOEngine:
     cam, dm, mod, flat = make_hw_bench(exposure_ms=args.exposure,
                                        binning=args.binning,
                                        radius_mrad=args.radius,
+                                       freq_hz=args.fmod,
                                        use_dm=not args.no_dm)
+    if args.cam_gain is not None:
+        cam.set_gain(args.cam_gain)
     return AOEngine(cam, dm, mod, flat)
 
 
@@ -777,6 +828,9 @@ def main(argv=None):
     ap.add_argument('--exposure', type=float, default=50.0)
     ap.add_argument('--binning', type=int, default=2)
     ap.add_argument('--radius', type=float, default=10.0)
+    ap.add_argument('--fmod', type=float, default=20.0,
+                    help='modulation frequency [Hz]; use t_exp = 1/fmod')
+    ap.add_argument('--cam-gain', type=float, default=None, help='camera gain [dB]')
     ap.add_argument('--no-dm', action='store_true',
                     help='real camera + modulator, DM not driven')
     ap.add_argument('--screenshot', default=None,

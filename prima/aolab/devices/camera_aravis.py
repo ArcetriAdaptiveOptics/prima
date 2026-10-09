@@ -89,8 +89,8 @@ class AravisCamera(Camera):
     def _full_region(self):
         d = self._cam.get_device()
         self._cam.set_region(0, 0, 64, 64)
-        w = d.get_integer_feature_bounds('Width')[1]
-        h = d.get_integer_feature_bounds('Height')[1]
+        w = d.get_integer_feature_value('WidthMax')
+        h = d.get_integer_feature_value('HeightMax')
         self._cam.set_region(0, 0, int(w), int(h))
 
     def _set_reduction(self, b):
@@ -192,6 +192,46 @@ class AravisCamera(Camera):
 
     def set_exposure_ms(self, ms):
         self._cam.set_float('ExposureTimeAbs', float(ms) * 1e3)
+        self.set_fps(None)
+
+    def set_fps(self, fps=None):
+        """Frame rate of the free-running camera (FixedRate trigger).
+        ``None`` = the maximum the camera allows for the current ROI,
+        decimation and exposure.  NB: AcquisitionFrameRateAbs is NOT
+        raised automatically when the ROI shrinks: without this the
+        Manta stayed at 12.9 fps even with a 40 fps ROI (2026-10-10)."""
+        try:
+            self._cam.set_string('TriggerSource', 'FixedRate')
+        except Exception:
+            pass
+        lim = self.max_fps()
+        target = lim if fps is None else min(float(fps), lim)
+        if target > 0:
+            try:
+                self._cam.set_float('AcquisitionFrameRateAbs',
+                                    0.999 * target)
+            except Exception:
+                pass
+
+    def get_set_fps(self):
+        try:
+            return float(self._cam.get_float('AcquisitionFrameRateAbs'))
+        except Exception:
+            return 0.0
+
+    def set_gain(self, db):
+        """Analog gain in dB (Manta: 'Gain').  More ADU per photon: useful
+        with short exposures, when read noise dominates."""
+        try:
+            self._cam.set_float('Gain', float(db))
+        except Exception:
+            self._cam.set_integer('GainRaw', int(round(db)))
+
+    def get_gain(self):
+        try:
+            return float(self._cam.get_float('Gain'))
+        except Exception:
+            return float(self._cam.get_integer('GainRaw'))
 
     def get_exposure_ms(self):
         return float(self._cam.get_float('ExposureTimeAbs')) / 1e3
@@ -211,11 +251,18 @@ class AravisCamera(Camera):
 
     def set_roi(self, x0, y0, w, h):
         def f():
-            b = self.get_binning()
             # Manta: Width/Height multiples of 2 (8 is always safe)
-            ww = max(64, int(w) // 8 * 8)
-            hh = max(64, int(h) // 8 * 8)
-            self._cam.set_region(int(x0) // 2 * 2, int(y0) // 2 * 2, ww, hh)
+            ww = max(64, -(-int(w) // 8) * 8)      # round UP to 8
+            hh = max(64, -(-int(h) // 8) * 8)
+            d = self._cam.get_device()
+            wmax = int(d.get_integer_feature_value('WidthMax'))
+            hmax = int(d.get_integer_feature_value('HeightMax'))
+            ww, hh = min(ww, wmax), min(hh, hmax)
+            xx = min(max(0, int(x0) // 2 * 2), wmax - ww)
+            yy = min(max(0, int(y0) // 2 * 2), hmax - hh)
+            self._cam.set_region(0, 0, ww, hh)     # shrink first, then move
+            self._cam.set_region(xx, yy, ww, hh)
+            self.set_fps(None)
         self._restart_after(f)
 
     def get_roi(self):
@@ -227,6 +274,7 @@ class AravisCamera(Camera):
             self._set_reduction(b)
             self._full_region()
             self._bin = int(b)
+            self.set_fps(None)
         self._restart_after(f)
 
     def get_binning(self):

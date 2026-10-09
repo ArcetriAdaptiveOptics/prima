@@ -123,17 +123,36 @@ def step_loop():
     stop_daemon() if __import__('prima.aolab.devices.hw', fromlist=['x']).dm_owner_pids() else None
     exp = float(os.environ.get('EXP', '50'))
     rmod = float(os.environ.get('RMOD', '10'))
-    cam, dm, mod, flat = make_hw_bench(exposure_ms=exp, binning=2, radius_mrad=rmod)
+    dec = int(os.environ.get('DEC', '2'))
+    fmod = float(os.environ.get('FMOD', '20'))
+    roi = os.environ.get('ROI', '')          # margin in px, '' = full frame
+    cam, dm, mod, flat = make_hw_bench(exposure_ms=exp, binning=dec,
+                                       radius_mrad=rmod, freq_hz=fmod)
+    if os.environ.get('CAMGAIN'):
+        cam.set_gain(float(os.environ['CAMGAIN']))
+    REPORT['setup'] = dict(cam_gain=cam.get_gain(), exp_ms=exp, dec=dec, fmod=fmod, rmod=rmod, roi=roi,
+                           mod_state=mod.state())
     e = AOEngine(cam, dm, mod, flat)
     try:
         e.start()
         time.sleep(2)
         g = e.detect_pupils()
+        REPORT['pupils_full'] = g.to_dict()
+        np.save(OUT / 'frame_full.npy', e.last_frame)
+        if roi != '':
+            e.roi_to_pupils(int(roi))
+            time.sleep(1.5)
+            g = e.geom
+            np.save(OUT / 'frame_roi.npy', e.last_frame)
         REPORT['pupils'] = g.to_dict()
+        REPORT['cam_roi'] = cam.get_roi()
+        REPORT['cam_fps'] = cam.get_fps()
         I = e.wait_measure()['I'].sum(axis=1)
         REPORT['flux_ratio'] = (I / I.mean()).round(3).tolist()
         e.set_reference(20)
         REPORT['rate_hz'] = e.loop_rate_hz()
+        REPORT['compute_ms'] = e.compute_time_ms()
+        REPORT['dark'] = {'follower': e.proc.dark, 'frame': e.proc.dark_inst}
         # linearity of KL mode 1 and 5
         act = G.pupil_actuators()
         B = G.make_basis('kl', act, 10)
@@ -178,12 +197,15 @@ def step_loop():
             t0 = time.time()
             while time.time() - t0 < secs:
                 time.sleep(0.2)
-            r = e.tel.series('mode_rms', 40)
+            nlast = int(max(40, 2 * e.loop_rate_hz()))
+            r = e.tel.series('mode_rms', nlast)
             REPORT.setdefault('phases', {})[label] = float(np.nanmean(r) * e.nm_per_unit)
+            q = e.tel.series('dm_res_rms', nlast)
+            REPORT.setdefault('phases_dm_res', {})[label] = float(np.nanmean(q) * e.nm_per_unit)
         e.lp.gain = float(os.environ.get('GAIN', '0.3'))
         run('open_flat', 4)
         e.close_loop(); run('closed_flat', 6)
-        e.open_loop(); e.set_static({4: 0.01, 6: 0.008}); run('open_static', 4)
+        e.open_loop(reset=True); e.set_static({4: 0.01, 6: 0.008}); run('open_static', 4)
         e.close_loop(); run('closed_static', 6)
         e.open_loop(reset=True); e.set_static({4: 0, 6: 0})
         e.set_turbulence(True, rms=0.008, wind=0.3); run('open_turb', 6)
@@ -196,13 +218,14 @@ def step_loop():
         ax[0].plot(tel['mode_rms'] * k, label='reconstructed WF')
         ax[0].plot(tel['dist_rms'] * k, label='DM disturbance')
         ax[0].plot(tel['loop_cmd_rms'] * k, label='loop command')
-        ax[0].fill_between(np.arange(tel['t'].size), 0, np.nan_to_num(tel['loop_closed']) * 20,
+        ax[0].fill_between(np.arange(tel['t'].size), 0, np.nan_to_num(tel['loop_closed']) * 200,
                            color='g', alpha=.3, label='closed')
         ax[0].set_ylabel('nm rms (nominal)'); ax[0].legend(); ax[0].grid(alpha=.3)
         ax[1].semilogy(e.rec.singular_values, 'o', ms=3, label='singular values')
         ax[1].semilogy(e.imat.sensitivity(), label='sensitivity'); ax[1].legend(); ax[1].grid(alpha=.3)
         fig.tight_layout(); fig.savefig(OUT / 'loop.png', dpi=80)
         REPORT['nm_per_unit'] = e.nm_per_unit
+        REPORT['rate_hz_end'] = e.loop_rate_hz()
     finally:
         e.stop(park=True)
         mod.close(keep_modulating=True)

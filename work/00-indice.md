@@ -8,13 +8,15 @@ Software nuovo in `prima/aolab` (motore AO + GUI stile daoEkarus).
 - [[02-aolab-software]] — architettura del software, come si usa, test sul simulatore
 - [[03-regole-banco]] — regole di sicurezza: presa Meross, DM, modulatore
 - [[04-test-hw-2026-10-09]] — test su hardware: bug del pivot E-518, bug HV del DM, **primo loop chiuso**
+- [[05-dark-roi-velocita-2026-10-10]] — dark follower, ROI automatica, frame rate della Manta, banda passante del modulatore, loop a 20/41/80 Hz
 
 ## Come lanciare
 ```bash
 source ~/git/.venv-prima/bin/activate
 cd ~/git/prima
 python -m prima.aolab.gui --sim     # gemello numerico, senza hardware
-python -m prima.aolab.gui --hw      # banco vero
+python -m prima.aolab.gui --hw      # banco vero (20 Hz)
+python -m prima.aolab.gui --hw --binning 2 --exposure 20 --fmod 50 --cam-gain 6   # 41 Hz, poi 'ROI on pupils'
 ```
 
 ## Convenzioni

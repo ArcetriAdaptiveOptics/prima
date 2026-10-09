@@ -175,15 +175,58 @@ class AOEngine:
         self.set_geometry(g)
         return g
 
-    def set_geometry(self, g: PupilGeometry, npix_across: int = 32):
+    def set_geometry(self, g: PupilGeometry, npix_across: int = 32,
+                     keep_calib: bool = False):
+        """New pupil geometry.  ``keep_calib``: the same detector pixels
+        are seen (e.g. after a ROI change, centres just shifted), so the
+        reference, IM and reconstructor stay valid."""
         with self._lock:
+            old = self.proc
             self.geom = g
             self.proc = PyramidProcessor(g, npix_across)
-            self.imat = None
-            self.rec = None
-            self._c = None
+            if keep_calib and old is not None:
+                self.proc.set_reference(old.ref)
+                self.proc.dark_mode = old.dark_mode
+                self.proc.dark_frames = old.dark_frames
+                self.proc.dark = old.dark
+            else:
+                self.imat = None
+                self.rec = None
+                self._c = None
         self.log('pupils: r=%.1f px, %d valid px/pupil, %s'
                  % (g.radius, self.proc.n_valid, g.notes))
+
+    # ---------------------------------------------------------- ROI
+    def roi_to_pupils(self, margin_px: int = 5):
+        """Crop the camera to the box tangent to the outer pupil edges
+        (+ margin): fewer pixels to read and transfer -> faster frames.
+        Geometry is shifted, calibration kept."""
+        if self.geom is None:
+            raise RuntimeError('find the pupils first')
+        g = self.geom
+        x0, y0, w, h = self.cam.get_roi()
+        r = g.radius
+        rmin = int(np.floor(g.centers[:, 0].min() - r - margin_px))
+        rmax = int(np.ceil(g.centers[:, 0].max() + r + margin_px))
+        cmin = int(np.floor(g.centers[:, 1].min() - r - margin_px))
+        cmax = int(np.ceil(g.centers[:, 1].max() + r + margin_px))
+        rmin, cmin = max(rmin, 0), max(cmin, 0)
+        self._apply_roi(x0 + cmin, y0 + rmin, cmax - cmin, rmax - rmin)
+
+    def roi_full(self):
+        self._apply_roi(0, 0, 10 ** 5, 10 ** 5)
+
+    def _apply_roi(self, x, y, w, h):
+        ox, oy, _, _ = self.cam.get_roi()
+        self.cam.set_roi(x, y, w, h)
+        nx, ny, nw, nh = self.cam.get_roi()
+        if self.geom is not None:
+            c = self.geom.centers - np.array([ny - oy, nx - ox], float)
+            g = PupilGeometry(c, self.geom.radius, (nh, nw),
+                              self.geom.notes)
+            self.set_geometry(g, self.proc.n if self.proc else 32,
+                              keep_calib=True)
+        self.log('camera ROI x=%d y=%d %dx%d' % (nx, ny, nw, nh))
 
     def set_reference(self, n_frames: int = 10, zero: bool = False):
         """Reference slopes = mean slopes now (or zero = 'absolute')."""
@@ -232,6 +275,9 @@ class AOEngine:
             res = {}
             with self._lock:
                 proc, rec = self.proc, self.rec
+            if proc is not None and proc.geom.frame_shape[0] and \
+                    tuple(frame.shape) != tuple(proc.geom.frame_shape):
+                proc = None           # frame from before a ROI change
             if proc is not None:
                 try:
                     res = proc.compute(frame)
@@ -279,6 +325,8 @@ class AOEngine:
             s = res['slopes']
             scal['slope_rms'] = float(np.sqrt(np.mean(s ** 2)))
             scal['flux'] = res['flux']
+            scal['dark'] = res.get('dark') if res.get('dark') is not None \
+                else np.nan
         if modes is not None:
             # modes are orthonormal with unit RMS on the active actuators
             # -> WF rms on the DM = sqrt(sum m_k^2)
@@ -291,6 +339,12 @@ class AOEngine:
             scal['loop_cmd_rms'] = float(self.ch['loop'][self.active].std())
             scal['dist_rms'] = float((self.ch['turb']
                                       + self.ch['static'])[self.active].std())
+            # what is left of the DM-made disturbance after the loop's
+            # correction: (turb + static + loop) on the DM itself.  Independent
+            # of the WFS noise; includes the (constant) bench-aberration
+            # correction held by the loop.
+            scal['dm_res_rms'] = float((self.ch['turb'] + self.ch['static']
+                                        + self.ch['loop'])[self.active].std())
         self.tel.push(scal, modes, dist_modes)
         # watchdog
         if self.loop_closed and res:

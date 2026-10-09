@@ -39,6 +39,13 @@ PIVOT_V = 100.0
 V_LO, V_HI = 0.0, 100.0
 MAX_RADIUS_MRAD = float(os.environ.get('PRIMA_MOD_MAX_MRAD', '40'))
 
+# Closed-loop amplitude response of the S-334 (obtained / requested p-p),
+# measured 2026-10-10 with POS? sampling at R = 10 mrad (mod_bench.py).
+# The servo attenuates fast circles: the commanded radius is divided by
+# this gain so that the OBTAINED radius is the requested one.
+AMP_GAIN_F = np.array([0.0, 20.0, 50.0, 100.0, 200.0, 400.0])
+AMP_GAIN_G = np.array([1.0, 0.947, 0.771, 0.488, 0.213, 0.050])
+
 
 class PiTipTiltModulator:
     def __init__(self, host='192.168.30.190', port=50000,
@@ -52,6 +59,7 @@ class PiTipTiltModulator:
         self.freq = 20.0
         self.center = np.zeros(2)
         self.modulating = False
+        self.compensate = True       # amplitude vs frequency compensation
         self.servo_dt = 40e-6
         self.wtr = 1
         self.n_pts = 0
@@ -125,9 +133,11 @@ class PiTipTiltModulator:
     # ------------------------------------------------------- modulation
     def set_modulation(self, radius_mrad, freq_hz=None):
         r = float(radius_mrad)
-        if r < 0 or r > self.max_radius:
-            raise ValueError('radius %.2f outside [0, %.1f] mrad'
-                             % (r, self.max_radius))
+        f_chk = float(freq_hz) if freq_hz is not None else self.freq
+        if r < 0 or r / max(self.amp_gain(f_chk), 1e-3) > self.max_radius:
+            raise ValueError('radius %.2f mrad at %.0f Hz needs a command '
+                             'above the %.1f mrad limit'
+                             % (r, f_chk, self.max_radius))
         with self.lock:
             self.radius = r
             if freq_hz is not None:
@@ -160,9 +170,20 @@ class PiTipTiltModulator:
         self.n_pts = n
         self.modulating = True
 
+    def amp_gain(self, freq=None):
+        f = self.freq if freq is None else float(freq)
+        return float(np.interp(f, AMP_GAIN_F, AMP_GAIN_G))
+
+    def commanded_radius(self):
+        """Radius actually written in the wave table (compensated)."""
+        if not self.compensate:
+            return self.radius
+        return min(self.radius / max(self.amp_gain(), 1e-3), self.max_radius)
+
     def _load_sin(self, table, axis, cen_mrad, phase, n):
-        peak = self.mrad_to_gcs(cen_mrad + self.radius, axis)
-        valley = self.mrad_to_gcs(cen_mrad - self.radius, axis)
+        rc = self.commanded_radius()
+        peak = self.mrad_to_gcs(cen_mrad + rc, axis)
+        valley = self.mrad_to_gcs(cen_mrad - rc, axis)
         start = int(round(phase / (2 * math.pi) * n)) % n
         # WAV <t> X SIN_P <len> <amp p-p> <offset=valley> <wavelen> <start> <centre>
         self._set('WAV %d X SIN_P %d %.6f %.6f %d %d %d'
@@ -204,6 +225,7 @@ class PiTipTiltModulator:
 
     def state(self):
         return {'radius_mrad': self.radius, 'freq_hz': self.freq,
+                'radius_cmd_mrad': round(self.commanded_radius(), 3),
                 'center': (float(self.center[0]), float(self.center[1])),
                 'modulating': self.modulating, 'n_pts': self.n_pts}
 

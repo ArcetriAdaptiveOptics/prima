@@ -132,8 +132,25 @@ class PyramidProcessor:
     """
 
     def __init__(self, geom: PupilGeometry, npix_across: int = 32,
-                 radius_scale: float = 0.95, norm: str = 'global'):
+                 radius_scale: float = 0.95, norm: str = 'global',
+                 dark_mode: str = 'follower', dark_frames: int = 20,
+                 dark_margin: float = 1.2):
         self.geom = geom
+        # --- dark ("dark follower") -------------------------------------
+        # The source cannot be switched off during the loop, so the dark
+        # level is measured on every frame from the pixels OUTSIDE the
+        # four pupils (beyond dark_margin * radius, to skip the halo) and
+        # smoothed with an exponential running mean over ~dark_frames.
+        #   'follower' : running mean (default)
+        #   'frame'    : value of the current frame only
+        #   'fixed'    : self.dark_fixed (e.g. a frozen value)
+        #   'off'      : no subtraction
+        self.dark_mode = dark_mode
+        self.dark_frames = int(dark_frames)
+        self.dark_margin = float(dark_margin)
+        self.dark = None          # followed value (ADU)
+        self.dark_inst = None     # value measured on the last frame
+        self.dark_fixed = 0.0
         self.n = int(npix_across)
         self.norm = norm
         n = self.n
@@ -159,19 +176,49 @@ class PyramidProcessor:
         self.ref = np.zeros(2 * self.n_valid)
         # background ring: pixels well outside the 4 pupils
         self._bg_idx = None
+        self._bg_shape = None
 
     # ---- helpers -----------------------------------------------------
+    def _dark_pixels(self, shape):
+        """Indices of background pixels (outside all pupils), subsampled
+        to <= ~40k pixels."""
+        h, w = shape
+        step = max(1, int(np.sqrt(h * w / 40000.0)))
+        yy, xx = np.mgrid[0:h:step, 0:w:step]
+        far = np.ones(yy.shape, bool)
+        for (cy, cx) in self.geom.centers:
+            far &= np.hypot(yy - cy, xx - cx) > self.dark_margin * self.geom.radius
+        return yy[far], xx[far]
+
     def _background(self, frame: np.ndarray) -> float:
-        if self._bg_idx is None or self._bg_idx[0].size == 0:
-            h, w = frame.shape
-            yy, xx = np.mgrid[0:h:4, 0:w:4]
-            far = np.ones(yy.shape, bool)
-            for (cy, cx) in self.geom.centers:
-                far &= np.hypot(yy - cy, xx - cx) > 1.3 * self.geom.radius
-            self._bg_idx = (yy[far], xx[far])
-        if self._bg_idx[0].size == 0:
+        if self.dark_mode == 'off':
+            self.dark_inst = None
             return 0.0
-        return float(np.median(frame[self._bg_idx]))
+        if self._bg_idx is None or self._bg_shape != frame.shape:
+            self._bg_idx = self._dark_pixels(frame.shape)
+            self._bg_shape = frame.shape
+        if self._bg_idx[0].size < 50:
+            return float(self.dark or 0.0)
+        v = frame[self._bg_idx]
+        # trimmed mean: drop the brightest 5 % (stray light, hot pixels)
+        hi = np.percentile(v, 95)
+        inst = float(v[v <= hi].mean())
+        self.dark_inst = inst
+        if self.dark_mode == 'fixed':
+            return float(self.dark_fixed)
+        if self.dark_mode == 'frame' or self.dark is None:
+            self.dark = inst
+        else:
+            a = 1.0 / max(1, self.dark_frames)
+            self.dark = (1 - a) * self.dark + a * inst
+        return float(self.dark)
+
+    def background_mask(self, shape) -> np.ndarray:
+        """Boolean image of the pixels used for the dark (for display)."""
+        m = np.zeros(shape, bool)
+        yy, xx = self._dark_pixels(shape)
+        m[yy, xx] = True
+        return m
 
     def pupil_intensities(self, frame: np.ndarray) -> np.ndarray:
         """(4, n_valid) intensities on the resampled pupil grids
@@ -199,6 +246,7 @@ class PyramidProcessor:
         sy = (I[0] + I[1] - I[2] - I[3]) / den
         s = np.concatenate([sx, sy])
         return {'slopes_raw': s, 'slopes': s - self.ref,
+                'dark': self.dark, 'dark_inst': self.dark_inst,
                 'flux': float(tot.sum()), 'I': I}
 
     def set_reference(self, slopes_raw: np.ndarray | None) -> None:
