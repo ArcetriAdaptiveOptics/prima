@@ -1,0 +1,17 @@
+{
+ "daemon_stopped": [],
+ "poke_64": {
+  "rms_diff": 7.247701644897461,
+  "max_abs": 173.0
+ },
+ "poke_69": {
+  "rms_diff": 6.533329010009766,
+  "max_abs": 97.75
+ },
+ "poke_75": {
+  "rms_diff": 7.37757682800293,
+  "max_abs": 163.25
+ },
+ "focus_rms_diff": 14.083455085754395,
+ "note": "DM HV disabled at the end (driver close)"
+}
