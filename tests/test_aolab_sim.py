@@ -120,3 +120,21 @@ def test_record_telemetry(engine, tmp_path, monkeypatch):
     with fits.open(d / 'calib.fits') as h:
         assert h[0].data.shape == (n_slopes, n_modes)      # IM
         assert h['REC'].data.shape == (n_modes, n_slopes)
+    # offline analysis of the same recording
+    import matplotlib
+    matplotlib.use('Agg')
+    from prima.aolab.analysis import PrimaAnalyzer, list_tags
+    assert list_tags(root=tmp_path) == [d.name]
+    an = PrimaAnalyzer(d)
+    assert an.loop.closed and an.loop.gain == lp.gain
+    r = an.loop.residual_modes
+    assert r.get_data().shape == (40, n_modes) and r.data_unit() == 'nm'
+    assert r.power().shape[1] == n_modes
+    assert np.allclose(r.get_data().value,
+                       m * meta['nm_per_unit'], rtol=1e-6)
+    pol = an.loop.pseudo_open_loop_modes.get_data().value
+    assert pol.shape == (40 - an.delay_frames, n_modes)
+    assert an.calib.im.shape == (n_slopes, n_modes)
+    sx, sy = an.wfs.slopes.to_maps(an.wfs.slopes.get_data()[0])
+    assert sx.shape == an.wfs.slopes.valid2d.shape
+    an.modalplot()

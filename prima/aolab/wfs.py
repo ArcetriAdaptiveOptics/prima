@@ -123,6 +123,14 @@ def _find_per_quadrant(img: np.ndarray):
     return np.asarray(cents), radii, -1
 
 
+def valid_mask(npix_across: int) -> np.ndarray:
+    """Valid sub-apertures of one pupil image resampled to n x n."""
+    n = int(npix_across)
+    u = (np.arange(n) - (n - 1) / 2.0) / (n / 2.0)       # [-1, 1]
+    U, V = np.meshgrid(u, u)                              # V rows
+    return (U ** 2 + V ** 2) <= 1.0
+
+
 class PyramidProcessor:
     """Turns a camera frame into slopes on a fixed set of valid pixels.
 
@@ -157,7 +165,7 @@ class PyramidProcessor:
         r = geom.radius * radius_scale
         u = (np.arange(n) - (n - 1) / 2.0) / (n / 2.0)       # [-1, 1]
         U, V = np.meshgrid(u, u)                              # V rows
-        self.valid2d = (U ** 2 + V ** 2) <= 1.0
+        self.valid2d = valid_mask(n)
         self.n_valid = int(self.valid2d.sum())
         self._step = (2.0 * r) / n
         self._k = max(1, int(round(self._step)))

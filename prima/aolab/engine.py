@@ -652,6 +652,7 @@ class AOEngine:
             meta['geometry'] = self.geom.to_dict()
         if self.proc is not None:
             meta['wfs'] = {'n_valid_per_pupil': int(self.proc.n_valid),
+                           'npix_across': int(self.proc.n),
                            'dark_mode': self.proc.dark_mode,
                            'dark_frames': self.proc.dark_frames}
         if self.imat is not None:
