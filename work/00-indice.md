@@ -18,6 +18,8 @@ python -m prima.aolab.gui --sim     # gemello numerico, senza hardware
 python -m prima.aolab.gui --hw      # banco vero (20 Hz)
 python -m prima.aolab.gui --hw --binning 2 --exposure 20 --fmod 50 --cam-gain 6   # 41 Hz, poi 'ROI on pupils'
 ```
+Icone sul desktop: **PRIMA AO lab GUI** (`scripts/start-aolab-gui.sh`, banco a 41 Hz;
+con argomenti, es. `--sim`, li passa alla GUI) e **PRIMA labrunner** (`scripts/start-labrunner.sh`).
 
 ## Convenzioni
 - Le ampiezze in **nm** sono *nominali*: stroke di 5.5 µm, deflessione proporzionale a u²,
