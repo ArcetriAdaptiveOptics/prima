@@ -160,19 +160,20 @@ class PrimaAnalyzer(BaseAnalyzer):
         npix = self.meta.get('wfs', {}).get('npix_across', 32)
         self.wfs = SimpleNamespace(
             slopes=Slopes(f('slopes'), tv, valid_mask(npix)),
-            frames=BaseTimeSeries(FitsDataLoader(f('frames')),
-                                  data_label='camera frames',
-                                  axes=('time', 'y', 'x')),
+            frames=(BaseTimeSeries(FitsDataLoader(f('frames')),
+                                   data_label='camera frames',
+                                   axes=('time', 'y', 'x'))
+                    if f('frames').exists() else None),
             flux=self.scalar('flux'), dark=self.scalar('dark'),
             exposure_ms=self.meta['camera']['exposure_ms'],
             camera=self.meta['camera'])
+        def modal(name, label):           # absent without reconstructor
+            return (ModalSeries(f(name), tv, k, label)
+                    if f(name).exists() else None)
         self.loop = SimpleNamespace(
-            residual_modes=ModalSeries(f('modes'), tv, k,
-                                       'residual modes'),
-            integrated_modes=ModalSeries(f('int_modes'), tv, k,
-                                         'integrated modes'),
-            disturbance_modes=ModalSeries(f('dist_modes'), tv, k,
-                                          'disturbance modes'),
+            residual_modes=modal('modes', 'residual modes'),
+            integrated_modes=modal('int_modes', 'integrated modes'),
+            disturbance_modes=modal('dist_modes', 'disturbance modes'),
             gain=lp['gain'], leak=lp['leak'],
             n_modes=self.meta.get('n_modes', 0),
             closed=bool(np.nanmean(self._scalars['loop_closed']) > 0.5),
@@ -181,7 +182,7 @@ class PrimaAnalyzer(BaseAnalyzer):
         self.loop.pseudo_open_loop_modes = _Derived(
             lambda: self.pseudo_open_loop(self.delay_frames),
             tv[self.delay_frames:], u.nm, 'pseudo open-loop modes',
-            ('time', 'mode'))
+            ('time', 'mode')) if f('int_modes').exists() else None
         self.dm = SimpleNamespace(
             commands=_Series(f('dm_cmd'), tv, 1.0, None,
                              'DM command [0..1]', ('time', 'actuator')),

@@ -587,7 +587,8 @@ class AOEngine:
         with self._lock:
             loop = self.ch['loop'].copy()
             dist = self.ch['turb'] + self.ch['static']
-            c = None if self._c is None else self._c.copy()
+            c = self._c.copy() if self._c is not None else (
+                np.zeros(self.rec.n_modes) if self.rec is not None else None)
         full = r.push(scal, slopes=res.get('slopes') if res else None,
                       modes=modes, int_modes=c, dist_modes=dist_modes,
                       dm_cmd=self.dm.last(), loop_cmd=loop, dist_cmd=dist,
