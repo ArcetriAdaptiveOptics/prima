@@ -9,6 +9,7 @@ Software nuovo in `prima/aolab` (motore AO + GUI stile daoEkarus).
 - [[03-regole-banco]] — regole di sicurezza: presa Meross, DM, modulatore
 - [[04-test-hw-2026-10-09]] — test su hardware: bug del pivot E-518, bug HV del DM, **primo loop chiuso**
 - [[05-dark-roi-velocita-2026-10-10]] — dark follower, ROI automatica, frame rate della Manta, banda passante del modulatore, loop a 20/41/80 Hz
+- [[06-strumenti-studenti-2026-10-10]] — materiale per gli studenti: registrazione della telemetria (Record), analisi, notebook
 
 ## Come lanciare
 ```bash
@@ -25,4 +26,5 @@ con argomenti, es. `--sim`, li passa alla GUI) e **PRIMA labrunner** (`scripts/s
 - Le ampiezze in **nm** sono *nominali*: stroke di 5.5 µm, deflessione proporzionale a u²,
   WF = 2 × superficie. Il DM non è ancora calibrato all'interferometro.
 - Dati di calibrazione: `~/git/prima_data/<data>_<tag>/` (`calib.npz` + `meta.json`).
+- Registrazioni di telemetria: `~/git/prima_data/telemetry/YYYYMMDD_HHMMSS[-etichetta]/` (FITS + `meta.json`).
 - Dati grezzi dei test: `work/data/` (gli npz/npy non vanno in git).

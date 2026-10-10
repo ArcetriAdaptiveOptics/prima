@@ -86,7 +86,7 @@ Repo vicini utili: `~/git/arte` (libreria di analisi del gruppo, da usare per te
 ## Prossimi passi (ottobre 2026)
 - Laser 632 nm in arrivo: ricontrollare saturazione/esposizione, rifare misure velocità vs rumore.
 - Provare l'S‑334 in anello aperto (servo off) a 100 Hz, ampiezza calibrata otticamente dalla sensibilità TT.
-- Per gli studenti: pulsante Record della telemetria (FITS + meta.json in `~/git/prima_data/<data>_<tag>/`),
+- Per gli studenti: pulsante Record della telemetria (fatto: FITS + meta.json in `~/git/prima_data/telemetry/<tag>/`),
   `PrimaAnalyzer` su `arte.dataelab`, notebook di esercitazione (sensore, calibrazione, controllo,
   turbolenza con `arte.atmo`, prestazioni), GUI a due livelli, lanciatore unico.
 - Configurazione 41 Hz come default della GUI.

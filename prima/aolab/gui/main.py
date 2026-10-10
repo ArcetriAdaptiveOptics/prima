@@ -36,6 +36,7 @@ QPushButton:hover { border-color: #6fd3d3; }
 QPushButton:disabled { color: #5a6b78; }
 QPushButton#close { background: #1f6b3a; font-weight: bold; }
 QPushButton#open { background: #6b2a1f; font-weight: bold; }
+QPushButton#record { background: #6b1f4f; font-weight: bold; }
 QDoubleSpinBox, QSpinBox, QComboBox, QLineEdit {
     background: #15222e; border: 1px solid #2f4b5e; padding: 2px; }
 QProgressBar { border: 1px solid #2f4b5e; text-align: center; }
@@ -98,6 +99,7 @@ class AOLabWindow(QtWidgets.QMainWindow):
         self.setStyleSheet(STYLE)
         self._pupil_items = []
         self._dm_channel = 'total'
+        self._rec_shown = None
         self._build()
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._refresh)
@@ -398,6 +400,35 @@ class AOLabWindow(QtWidgets.QMainWindow):
         g.addWidget(b_reset, 4, 0, 1, 3)
         self.lbl_sat = QtWidgets.QLabel('-')
         g.addWidget(self.lbl_sat, 5, 0, 1, 3)
+        # ---- telemetry recording
+        line = QtWidgets.QFrame()
+        line.setFrameShape(QtWidgets.QFrame.HLine)
+        g.addWidget(line, 6, 0, 1, 3)
+        self.sp_rec_n = ispin(2048, 10, 200000)
+        self.sp_rec_n.setToolTip('number of consecutive loop frames')
+        self.sp_rec_cam = ispin(0, 0, 1000)
+        self.sp_rec_cam.setToolTip('also save the first N raw camera frames')
+        self.ed_rec_label = QtWidgets.QLineEdit()
+        self.ed_rec_label.setPlaceholderText('label, e.g. g0.3-turb150')
+        g.addWidget(QtWidgets.QLabel('Record frames'), 7, 0)
+        g.addWidget(self.sp_rec_n, 7, 1)
+        self.lbl_rec_s = QtWidgets.QLabel('')
+        g.addWidget(self.lbl_rec_s, 7, 2)
+        g.addWidget(QtWidgets.QLabel('+ cam frames'), 8, 0)
+        g.addWidget(self.sp_rec_cam, 8, 1)
+        g.addWidget(self.ed_rec_label, 9, 0, 1, 3)
+        self.b_rec = QtWidgets.QPushButton('RECORD')
+        self.b_rec.setObjectName('record')
+        self.b_rec.clicked.connect(self._on_record)
+        self.pb_rec = QtWidgets.QProgressBar()
+        self.pb_rec.setRange(0, 1000)
+        self.pb_rec.setTextVisible(False)
+        g.addWidget(self.b_rec, 10, 0)
+        g.addWidget(self.pb_rec, 10, 1, 1, 2)
+        self.lbl_rec = QtWidgets.QLabel('')
+        self.lbl_rec.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.lbl_rec.setWordWrap(True)
+        g.addWidget(self.lbl_rec, 11, 0, 1, 3)
         return box
 
     # -------------------------------------------------------------- DM
@@ -507,6 +538,35 @@ class AOLabWindow(QtWidgets.QMainWindow):
         except Exception as exc:
             self._append_log('ERROR: %s' % exc)
             traceback.print_exc()
+
+    def _on_record(self):
+        e = self.e
+        if e.recording:
+            e.stop_recording()
+            return
+        d = self._safe(e.start_recording, self.sp_rec_n.value(),
+                       label=self.ed_rec_label.text(),
+                       n_cam_frames=self.sp_rec_cam.value())
+        if d is not None:
+            self.lbl_rec.setText('recording -> %s' % d.name)
+
+    def _refresh_record(self):
+        e = self.e
+        rate = e.loop_rate_hz()
+        if rate > 0:
+            self.lbl_rec_s.setText('= %.1f s' % (self.sp_rec_n.value() / rate))
+        if e.recording:
+            self.b_rec.setText('STOP')
+            self.pb_rec.setValue(int(1000 * e.recording_progress()))
+            return
+        self.b_rec.setText('RECORD')
+        r = e.last_recording
+        if r is not None and r.done.is_set() and self._rec_shown is not r:
+            self._rec_shown = r
+            self.pb_rec.setValue(0)
+            self.lbl_rec.setText(
+                'FAILED: %s' % r.error if r.error else
+                'saved %d frames: %s' % (r.n, r.path))
 
     def _on_mod(self):
         self._safe(self.e.mod.set_modulation, self.sp_rmod.value(),
@@ -648,6 +708,7 @@ class AOLabWindow(QtWidgets.QMainWindow):
             self._refresh_history()
             self._refresh_dm()
             self._refresh_status()
+            self._refresh_record()
         except Exception:
             traceback.print_exc()
 
@@ -816,7 +877,9 @@ def build_engine(mode: str, args) -> AOEngine:
                                        use_dm=not args.no_dm)
     if args.cam_gain is not None:
         cam.set_gain(args.cam_gain)
-    return AOEngine(cam, dm, mod, flat)
+    e = AOEngine(cam, dm, mod, flat)
+    e.mode = 'hw'
+    return e
 
 
 def main(argv=None):

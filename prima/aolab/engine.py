@@ -25,10 +25,12 @@ from prima.aolab import dm_geometry as G
 from prima.aolab.calibration import (InteractionMatrix, Reconstructor,
                                      build_im, make_reconstructor)
 from prima.aolab.disturbance import FrozenFlowTurbulence, StaticAberration
+from prima.aolab.recorder import Recorder, git_version, make_tag
 from prima.aolab.telemetry import Telemetry
 from prima.aolab.wfs import PupilGeometry, PyramidProcessor, find_pupils
 
 DATA_DIR = Path.home() / 'git' / 'prima_data'
+REC_DIR = DATA_DIR / 'telemetry'
 CHANNELS = ('loop', 'turb', 'static', 'calib', 'user')
 
 
@@ -97,6 +99,9 @@ class AOEngine:
         self._thread = None
         self._t_loop: list[float] = []
         self._proj = None              # pinv(M2C) for disturbance modes
+        self._recorder: Recorder | None = None
+        self.last_recording: Recorder | None = None
+        self.mode = 'sim'              # 'sim' | 'hw', set by the launcher
 
     # ============================================================ life
     def start(self):
@@ -110,6 +115,7 @@ class AOEngine:
 
     def stop(self, park: bool = True):
         self.stop_calibration()
+        self.stop_recording()
         self.open_loop()
         self._running = False
         if self._thread is not None:
@@ -296,7 +302,9 @@ class AOEngine:
                     self.ch['turb'] = self.turb.step()
                     self._dm_dirty = True
             self._apply_dm()
-            self._telemetry(fid, res, modes)
+            scal, dist_modes = self._telemetry(fid, res, modes)
+            if self._recorder is not None:
+                self._record(scal, res, modes, dist_modes, frame)
             with self._meas:
                 self.last_frame = frame
                 self.frame_id = fid
@@ -346,7 +354,10 @@ class AOEngine:
             scal['dm_res_rms'] = float((self.ch['turb'] + self.ch['static']
                                         + self.ch['loop'])[self.active].std())
         self.tel.push(scal, modes, dist_modes)
-        # watchdog
+        self._watchdog(scal, res)
+        return scal, dist_modes
+
+    def _watchdog(self, scal, res):
         if self.loop_closed and res:
             r = scal['slope_rms']
             ref = self._rms_at_close or r
@@ -525,6 +536,138 @@ class AOEngine:
         for j, a in coeffs.items():
             self.static.set(j, a)
         self.set_channel('static', self.static.command())
+
+    # ===================================================== recording
+    @property
+    def recording(self) -> bool:
+        return self._recorder is not None
+
+    def recording_progress(self) -> float:
+        r = self._recorder
+        return r.progress if r is not None else 0.0
+
+    def start_recording(self, n_frames: int, label: str = '',
+                        n_cam_frames: int = 0, notes: str = '',
+                        done_cb=None) -> Path:
+        """Record the next ``n_frames`` RTC iterations (see recorder.py).
+        Files are written in a background thread when the buffer is full
+        (or on ``stop_recording``); ``done_cb(path_or_None)`` is called
+        from that thread.  Returns the target directory."""
+        if self._recorder is not None:
+            raise RuntimeError('already recording')
+        if self.proc is None:
+            raise RuntimeError('no pupils: find pupils first')
+        with self._lock:
+            n_modes = self.rec.n_modes if self.rec is not None else 0
+            shape = self.proc.geom.frame_shape
+            calib = self._calib_arrays()
+        n_slopes = int(np.size(self.proc.ref)) if self.proc.ref is not None \
+            else int(self.wait_measure()['slopes'].size)
+        tag = make_tag(label)
+        meta = self._meta()
+        meta.update({'kind': 'telemetry', 'tag': tag, 'label': label,
+                     'notes': notes, 'n_modes': n_modes,
+                     'n_slopes': n_slopes})
+        r = Recorder(REC_DIR / tag, n_frames, n_slopes, n_modes, G.N_ACT,
+                     frame_shape=shape if shape and shape[0] else None,
+                     n_cam_frames=n_cam_frames, meta=meta, calib=calib)
+        r.done_cb = done_cb
+        self._recorder = r
+        self.log('recording %d frames -> %s' % (n_frames, r.dir))
+        return r.dir
+
+    def stop_recording(self):
+        """Stop early and save what has been recorded so far."""
+        r = self._recorder
+        if r is not None:
+            self._finish_recording(r)
+
+    def _record(self, scal, res, modes, dist_modes, frame):
+        r = self._recorder
+        with self._lock:
+            loop = self.ch['loop'].copy()
+            dist = self.ch['turb'] + self.ch['static']
+            c = None if self._c is None else self._c.copy()
+        full = r.push(scal, slopes=res.get('slopes') if res else None,
+                      modes=modes, int_modes=c, dist_modes=dist_modes,
+                      dm_cmd=self.dm.last(), loop_cmd=loop, dist_cmd=dist,
+                      frame=frame)
+        if full:
+            self._finish_recording(r)
+
+    def _finish_recording(self, r: Recorder):
+        if self._recorder is not r:
+            return
+        self._recorder = None
+        self.last_recording = r
+
+        def work():
+            try:
+                p = r.save()
+                self.log('recording saved: %s (%d frames)' % (p, r.n))
+            except Exception as exc:
+                r.error = str(exc)
+                p = None
+                self.log('recording FAILED: %s' % exc)
+            r.done.set()
+            cb = getattr(r, 'done_cb', None)
+            if cb is not None:
+                cb(p)
+        threading.Thread(target=work, daemon=True, name='rec-save').start()
+
+    def _calib_arrays(self) -> dict:
+        a = {}
+        if self.imat is not None:
+            a['im'] = self.imat.im
+        if self.rec is not None:
+            a['rec'] = self.rec.rec
+            a['m2c'] = self.rec.m2c
+            a['sv'] = self.rec.singular_values
+        if self.proc is not None and self.proc.ref is not None:
+            a['ref'] = self.proc.ref
+        a['flat'] = self.flat
+        a['active'] = self.active
+        return a
+
+    def _meta(self) -> dict:
+        cam = self.cam
+        meta = {'mode': self.mode, 'software': git_version(),
+                'date': time.strftime('%Y-%m-%dT%H:%M:%S'),
+                'nm_per_unit': self.nm_per_unit,
+                'flat_mean': float(self.flat.mean()),
+                'loop': asdict(self.lp), 'calib': asdict(self.cp),
+                'loop_closed': self.loop_closed,
+                'modulator': self.mod.state(),
+                'camera': {'exposure_ms': cam.get_exposure_ms(),
+                           'fps': cam.get_fps(),
+                           'roi': list(cam.get_roi()),
+                           'binning': cam.get_binning()}}
+        if hasattr(cam, 'get_gain'):
+            try:
+                meta['camera']['gain_db'] = cam.get_gain()
+            except Exception:
+                pass
+        meta['loop_rate_hz_live'] = self.loop_rate_hz()
+        if self.geom is not None:
+            meta['geometry'] = self.geom.to_dict()
+        if self.proc is not None:
+            meta['wfs'] = {'n_valid_per_pupil': int(self.proc.n_valid),
+                           'dark_mode': self.proc.dark_mode,
+                           'dark_frames': self.proc.dark_frames}
+        if self.imat is not None:
+            meta['im'] = {'amplitude': self.imat.amplitude,
+                          'basis': self.imat.basis, **self.imat.meta}
+        if self.rec is not None:
+            meta['reconstructor'] = {'n_modes': self.rec.n_modes,
+                                     'n_kept': self.rec.n_kept}
+        t = self.turb
+        meta['turbulence'] = {'on': self.turb_on} if t is None else {
+            'on': self.turb_on, 'rms': t.rms, 'wind_px_per_frame': t.wind,
+            'direction_deg': float(np.rad2deg(t.direction)),
+            'n': t.n, 'dx_mm': t.dx}
+        meta['static'] = {str(j): a for j, a in self.static.coeffs.items()
+                          if a}
+        return meta
 
     # =================================================== persistence
     def save(self, tag: str = '') -> Path:
