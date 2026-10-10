@@ -29,3 +29,7 @@ work/data/*.npz
 
 # Obsidian vault settings
 work/.obsidian/
+
+# notebooks: executed copies and checkpoints
+notebooks/soluzioni/_eseguiti/
+.ipynb_checkpoints/

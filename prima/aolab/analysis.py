@@ -197,10 +197,15 @@ class PrimaAnalyzer(BaseAnalyzer):
         self.modulator = SimpleNamespace(**self.meta.get('modulator', {}))
 
     # -------------------------------------------------------- helpers
-    def scalar(self, name: str) -> BaseTimeSeries:
+    def scalar(self, name: str) -> np.ndarray:
         """Per-frame scalar (t, frame, flux, dark, slope_rms, ...)."""
-        v = self._scalars[name]
-        return BaseTimeSeries(v, time_vector=self.time, data_label=name)
+        return self._scalars[name].copy()
+
+    def scalar_series(self, name: str) -> BaseTimeSeries:
+        """Same as ``scalar`` as an arte time series of shape (N, 1)."""
+        return BaseTimeSeries(self._scalars[name][:, None],
+                              time_vector=self.time, data_label=name,
+                              axes=('time', 'value'))
 
     @property
     def scalar_names(self) -> list[str]:

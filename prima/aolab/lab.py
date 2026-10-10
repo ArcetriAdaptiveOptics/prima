@@ -40,16 +40,22 @@ def calibrate(e: AOEngine, n_modes: int = 50, amplitude: float = 0.005,
 
 
 def sim_engine(fps: float = 200.0, calibrated: bool = True,
-               n_modes: int = 50, log=_quiet, **calib_kw) -> AOEngine:
+               n_modes: int = 50, flux: float | None = None, log=_quiet,
+               **calib_kw) -> AOEngine:
     """Started engine on the numerical twin of the bench.  ``fps`` is the
     simulated camera rate: everything (wind, delay) is in frames, so a
-    faster simulation is just a shorter wait."""
+    faster simulation is just a shorter wait.  ``flux``: photons per 10 ms
+    frame (default 6e6, almost noiseless; ~2e4 gives the ~30 nm noise
+    floor of the bench at 41 Hz).  It can be changed at any time with
+    ``e.sim_model.flux``."""
     from prima.aolab.devices.hw import FACTORY_FLAT, load_flat
     from prima.aolab.devices.sim import make_sim_bench
     flat = load_flat(FACTORY_FLAT)
     cam, dm, mod, model = make_sim_bench(flat=flat, fps=fps)
     e = AOEngine(cam, dm, mod, flat, log=log)
     e.sim_model = model
+    if flux is not None:
+        model.flux = float(flux)
     e.start()
     if calibrated:
         calibrate(e, n_modes=n_modes, **calib_kw)
