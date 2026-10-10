@@ -87,3 +87,11 @@ g ≈ 1.4 con vento 2/frame (78 nm).
 - [ ] misurare D sul banco
 - [ ] GUI a due livelli + lanciatore unico, 41 Hz come default
 - [ ] provare Record sul banco
+
+## Tentativo sul banco (10/10, rimandato a lunedì)
+Banco spento: camera (.189) e modulatore (.190) non rispondono al ping, DM assente su USB.
+`power status` fallisce: il login HTTP Meross riesce e il broker MQTT è raggiungibile,
+ma **mss210 e mss425e risultano entrambe offline** ("Failed to enroll device"). Due prese
+in stanze diverse insieme → probabile problema di cloud Meross o Wi‑Fi, non delle prese.
+Lunedì: controllare l'app Meross/LED della presa, poi `lab.hw_engine()` → calibrazione →
+`lab.record` → misura di D e RTF sul banco → Record dalla GUI.
