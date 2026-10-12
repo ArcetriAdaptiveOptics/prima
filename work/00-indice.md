@@ -9,7 +9,7 @@ Software nuovo in `prima/aolab` (motore AO + GUI stile daoEkarus).
 - [[03-regole-banco]] — regole di sicurezza: presa Meross, DM, modulatore
 - [[04-test-hw-2026-10-09]] — test su hardware: bug del pivot E-518, bug HV del DM, **primo loop chiuso**
 - [[05-dark-roi-velocita-2026-10-10]] — dark follower, ROI automatica, frame rate della Manta, banda passante del modulatore, loop a 20/41/80 Hz
-- [[06-strumenti-studenti-2026-10-10]] — materiale per gli studenti: registrazione della telemetria (Record), analisi, notebook
+- [[06-strumenti-studenti-2026-10-10]] — materiale per gli studenti: registrazione della telemetria (Record), analisi, notebook; prova sul banco: D = 2, Record ok a 41 Hz
 
 ## Come lanciare
 ```bash

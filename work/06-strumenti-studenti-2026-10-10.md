@@ -84,14 +84,54 @@ g ≈ 1.4 con vento 2/frame (78 nm).
 - [x] `PrimaAnalyzer` su `arte.dataelab`
 - [x] notebook pilota 03-controllo
 - [ ] notebook 01, 02, 04, 05 (dopo il parere di Marco sul pilota)
-- [ ] misurare D sul banco
+- [x] misurare D sul banco → **D = 2**
 - [ ] GUI a due livelli + lanciatore unico, 41 Hz come default
-- [ ] provare Record sul banco
+- [x] provare Record sul banco
+- [ ] notebook 03, parte sul banco: D = 2 ⇒ g_max = 1 (non 2); usare g ≤ 0.8
+- [ ] capire il rumore anomalo sul tip (modo 0) e il salto di tip a metà registrazione
 
-## Tentativo sul banco (10/10, rimandato a lunedì)
-Banco spento: camera (.189) e modulatore (.190) non rispondono al ping, DM assente su USB.
-`power status` fallisce: il login HTTP Meross riesce e il broker MQTT è raggiungibile,
-ma **mss210 e mss425e risultano entrambe offline** ("Failed to enroll device"). Due prese
-in stanze diverse insieme → probabile problema di cloud Meross o Wi‑Fi, non delle prese.
-Lunedì: controllare l'app Meross/LED della presa, poi `lab.hw_engine()` → calibrazione →
-`lab.record` → misura di D e RTF sul banco → Record dalla GUI.
+## Prova sul banco (12/10)
+Il 10/10 le prese Meross (mss210 e mss425e, stanze diverse) risultavano entrambe offline sul
+cloud; il 12/10 erano di nuovo raggiungibili. Banco acceso, tutto su in 12 s.
+
+Script `scripts/aolab/hw_student_tools.py` (con `--sim` gira sul gemello numerico): lo stesso
+percorso del notebook 03 sul banco, solo con `lab.py` — `hw_engine` → `calibrate` (KL, 50 modi,
+180 nm, 2 frame/poke) → solo rumore → anello aperto con turbolenza dal DM (180 nm, vento 0.5
+px/frame) → anello chiuso a vari guadagni, 2048 frame per registrazione. Log in `work/data/`.
+
+**Prima prova: 32.8 Hz invece di 41.** `lab.calibrate` non ritagliava la camera sulle pupille
+(il passo "ROI on pupils" della GUI): pieno campo decimato 1024² va a 33 fps. Corretto:
+sul banco `calibrate` ora chiama `roi_to_pupils(5)` (816×816) → **41.1 Hz**, 0 frame persi.
+
+**Ritardo: D = 2 frame** (sul simulatore 1). Dall'anello aperto il minimo di
+rms(m_k − d_{k−D}) è poco marcato (59/57/60 nm per D = 1/2/3), ma la RTF misurata,
+PSD(residuo)/PSD(pseudo open loop), coincide col modello D = 2 a ogni guadagno senza parametri liberi:
+![[figs/hw_rtf_41hz.png]]
+
+Con D = 2 il guadagno massimo è 1: nella prima prova g = 1.0 ha dato la risonanza a fs/6
+(residuo ~1100 nm, il watchdog non è scattato perché il loop è al limite, non divergente):
+![[figs/hw_rtf_33hz_fullframe.png]]
+
+| g (41 Hz) | residuo misurato | residuo sul DM (c+d) |
+|---|---|---|
+| anello aperto | 152 nm | 173 nm (disturbo) |
+| 0.2 | 85 nm | 91 nm |
+| 0.5 | 60 nm | 61 nm |
+| 0.8 | 62 nm | 68 nm |
+
+Rumore in anello aperto senza turbolenza: **40 nm** (il simulatore con `flux = 2e4` dà 25 nm),
+dominato dal **tip**: modo 0 = 34 nm, tilt 8, gli altri ≲ 10. Lo spettro del tip è bianco e
+~30× quello del tilt → il sensore è molto meno sensibile in tip (modulazione non circolare? da capire).
+Nella prima prova a g = 0.5 c'è anche un **salto di tip di ~400 nm** a t ≈ 44 s più una deriva
+lenta (~3 nm/s): il loop li insegue col DM, per cui c+d ≠ residuo vero (c+d include la
+correzione di disturbi del banco che non vengono dal DM). Da tenere presente negli esercizi:
+sul banco $d$ non è *tutto* il disturbo.
+![[figs/hw_tip_drift.png]]
+
+**Record dalla GUI** (`scripts/aolab/_shot_hw_record.py`, GUI offscreen che preme davvero il
+pulsante): 2048 frame + 20 frame camera a 41.1 Hz, tutti i file scritti, l'analyzer li apre;
+1 frame perso su 2048 (forse la copia dei frame camera).
+![[figs/gui_hw_recording.png]]
+![[figs/gui_hw_recorded.png]]
+
+Fine prova: GUI chiusa (DM al flat + HV off), modulatore R = 0 al centro.

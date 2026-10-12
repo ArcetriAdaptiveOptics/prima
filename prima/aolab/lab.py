@@ -24,9 +24,15 @@ def _quiet(msg):
 
 def calibrate(e: AOEngine, n_modes: int = 50, amplitude: float = 0.005,
               basis: str = 'kl', n_avg: int = 1, settle: int = 1,
-              zero_reference: bool = True) -> AOEngine:
-    """Find pupils, reference, push-pull IM and reconstructor (blocking)."""
+              zero_reference: bool = True,
+              roi_margin_px: int | None = 5) -> AOEngine:
+    """Find pupils, reference, push-pull IM and reconstructor (blocking).
+    On the bench the camera is then cropped to the pupils (as 'ROI on
+    pupils' in the GUI): full frame runs at ~33 Hz instead of ~40.
+    ``roi_margin_px=None`` keeps the current ROI."""
     e.detect_pupils()
+    if roi_margin_px is not None and getattr(e, 'mode', '') == 'hw':
+        e.roi_to_pupils(roi_margin_px)
     e.set_reference(zero=zero_reference)
     e.cp.basis, e.cp.n_modes, e.cp.amplitude = basis, n_modes, amplitude
     e.cp.n_avg, e.cp.settle = n_avg, settle
