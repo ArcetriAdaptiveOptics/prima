@@ -1,0 +1,35 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+tmp/
+.tmp/
+.venv*/
+venv/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
+gui-logs/
+**/gui-logs/
+.DS_Store
+*.swp
+*~
+.cursor/
+*.orig
+*.bak
+# PRIMA AO lab: runner queue/logs and bulky data stay local
+work/runner/
+work/data/*.npy
+work/data/*.npz
+
+# Obsidian vault settings
+work/.obsidian/
+
+# notebooks: executed copies and checkpoints
+notebooks/soluzioni/_eseguiti/
+.ipynb_checkpoints/

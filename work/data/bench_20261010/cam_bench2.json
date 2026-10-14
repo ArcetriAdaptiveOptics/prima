@@ -1,0 +1,306 @@
+[
+ {
+  "dec": 2,
+  "roi": "full",
+  "exp_ms": 20,
+  "fps": 32.8,
+  "max_fps": 32.9,
+  "set_fps": 32.8,
+  "errors": 0,
+  "shape": [
+   1024,
+   1024
+  ],
+  "region": [
+   0,
+   0,
+   1024,
+   1024
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "full",
+  "exp_ms": 10,
+  "fps": 32.8,
+  "max_fps": 32.9,
+  "set_fps": 32.8,
+  "errors": 0,
+  "shape": [
+   1024,
+   1024
+  ],
+  "region": [
+   0,
+   0,
+   1024,
+   1024
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "full",
+  "exp_ms": 5,
+  "fps": 32.8,
+  "max_fps": 32.9,
+  "set_fps": 32.8,
+  "errors": 0,
+  "shape": [
+   1024,
+   1024
+  ],
+  "region": [
+   0,
+   0,
+   1024,
+   1024
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "full",
+  "exp_ms": 2,
+  "fps": 32.8,
+  "max_fps": 32.9,
+  "set_fps": 32.8,
+  "errors": 0,
+  "shape": [
+   1024,
+   1024
+  ],
+  "region": [
+   0,
+   0,
+   1024,
+   1024
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "pupils",
+  "exp_ms": 20,
+  "fps": 40.4,
+  "max_fps": 40.4,
+  "set_fps": 40.4,
+  "errors": 0,
+  "shape": [
+   832,
+   816
+  ],
+  "region": [
+   110,
+   144,
+   816,
+   832
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "pupils",
+  "exp_ms": 10,
+  "fps": 40.4,
+  "max_fps": 40.4,
+  "set_fps": 40.4,
+  "errors": 0,
+  "shape": [
+   832,
+   816
+  ],
+  "region": [
+   110,
+   144,
+   816,
+   832
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "pupils",
+  "exp_ms": 5,
+  "fps": 40.3,
+  "max_fps": 40.4,
+  "set_fps": 40.4,
+  "errors": 0,
+  "shape": [
+   832,
+   816
+  ],
+  "region": [
+   110,
+   144,
+   816,
+   832
+  ]
+ },
+ {
+  "dec": 2,
+  "roi": "pupils",
+  "exp_ms": 2,
+  "fps": 40.4,
+  "max_fps": 40.4,
+  "set_fps": 40.4,
+  "errors": 0,
+  "shape": [
+   832,
+   816
+  ],
+  "region": [
+   110,
+   144,
+   816,
+   832
+  ]
+ },
+ {
+  "dec": 4,
+  "roi": "full",
+  "exp_ms": 20,
+  "fps": 49.7,
+  "max_fps": 49.8,
+  "set_fps": 49.7,
+  "errors": 0,
+  "shape": [
+   512,
+   512
+  ],
+  "region": [
+   0,
+   0,
+   512,
+   512
+  ]
+ },
+ {
+  "dec": 4,
+  "roi": "full",
+  "exp_ms": 10,
+  "fps": 65.2,
+  "max_fps": 65.3,
+  "set_fps": 65.2,
+  "errors": 0,
+  "shape": [
+   512,
+   512
+  ],
+  "region": [
+   0,
+   0,
+   512,
+   512
+  ]
+ },
+ {
+  "dec": 4,
+  "roi": "full",
+  "exp_ms": 5,
+  "fps": 65.2,
+  "max_fps": 65.3,
+  "set_fps": 65.2,
+  "errors": 0,
+  "shape": [
+   512,
+   512
+  ],
+  "region": [
+   0,
+   0,
+   512,
+   512
+  ]
+ },
+ {
+  "dec": 4,
+  "roi": "full",
+  "exp_ms": 2,
+  "fps": 65.2,
+  "max_fps": 65.3,
+  "set_fps": 65.2,
+  "errors": 0,
+  "shape": [
+   512,
+   512
+  ],
+  "region": [
+   0,
+   0,
+   512,
+   512
+  ]
+ },
+ {
+  "dec": 4,
+  "roi": "pupils",
+  "exp_ms": 20,
+  "fps": 49.7,
+  "max_fps": 49.8,
+  "set_fps": 49.7,
+  "errors": 0,
+  "shape": [
+   416,
+   408
+  ],
+  "region": [
+   54,
+   72,
+   408,
+   416
+  ]
+ },
+ {
+  "dec": 4,
+  "roi": "pupils",
+  "exp_ms": 10,
+  "fps": 80.0,
+  "max_fps": 80.1,
+  "set_fps": 80.0,
+  "errors": 0,
+  "shape": [
+   416,
+   408
+  ],
+  "region": [
+   54,
+   72,
+   408,
+   416
+  ]
+ },
+ {
+  "dec": 4,
+  "roi": "pupils",
+  "exp_ms": 5,
+  "fps": 79.9,
+  "max_fps": 80.1,
+  "set_fps": 80.0,
+  "errors": 0,
+  "shape": [
+   416,
+   408
+  ],
+  "region": [
+   54,
+   72,
+   408,
+   416
+  ]
+ },
+ {
+  "dec": 4,
+  "roi": "pupils",
+  "exp_ms": 2,
+  "fps": 80.0,
+  "max_fps": 80.1,
+  "set_fps": 80.0,
+  "errors": 0,
+  "shape": [
+   416,
+   408
+  ],
+  "region": [
+   54,
+   72,
+   408,
+   416
+  ]
+ }
+]

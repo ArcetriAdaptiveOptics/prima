@@ -1,0 +1,10 @@
+# BMC / Cambridge Innovations Multi-DM USB (CiGenUSB)
+# VID 1781 PID 0ed8 = Multi Driver; 0ed9 = Mini
+# Install once:
+#   sudo cp udev/99-bmc-multidm.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger
+SUBSYSTEM=="usb", ATTR{idVendor}=="1781", ATTR{idProduct}=="0ed8", MODE="0666", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="1781", ATTR{idProduct}=="0ed9", MODE="0666", GROUP="plugdev", TAG+="uaccess"
+# Unprogrammed Cypress FX2 (firmware load assist)
+SUBSYSTEM=="usb", ATTR{idVendor}=="04b4", ATTR{idProduct}=="8613", MODE="0666", GROUP="plugdev", TAG+="uaccess"

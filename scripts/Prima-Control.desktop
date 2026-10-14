@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Prima Control
+Comment=Prima main launcher — Drop 1 PWFS / Drop 2 BMC DM
+Exec=/bin/bash -lc 'source $HOME/git/.venv-prima/bin/activate; cd $HOME/git/prima; python -m prima.gui.control_launcher'
+Icon=applications-science
+Terminal=false
+Categories=Science;
+StartupNotify=true
